@@ -1,0 +1,9 @@
+from using:
+hyprland
+windows
+komorebi
+
+similar found later:
+vtm
+dvtm
+desqview

@@ -1,0 +1,255 @@
+/* Defined vars */
+$window: $surface;
+$window-active: $primary-darken-3;
+$terminal-foreground: $foreground;
+$terminal-background: $surface; /* Use $surface for a slightly different bg */
+
+/* ANSI Normal Colors */
+$terminal-black: $background-darken-2;
+$terminal-red: $error;
+$terminal-green: $success;
+$terminal-yellow: $warning;
+$terminal-blue: $secondary;
+$terminal-magenta: $secondary-lighten-2;
+$terminal-cyan: $primary-lighten-2;
+$terminal-white: $foreground-lighten-2;
+
+/* ANSI Bright Colors */
+$terminal-bright-black: $foreground-muted;
+$terminal-bright-red: $error-lighten-1;
+$terminal-bright-green: $success-lighten-1;
+$terminal-bright-yellow: $warning-lighten-1;
+$terminal-bright-blue: $secondary-lighten-1;
+$terminal-bright-magenta: $secondary-lighten-3;
+$terminal-bright-cyan: $primary-lighten-3;
+$terminal-bright-white: $foreground-lighten-3;
+
+Grid {
+    grid-size: 3 3;
+    grid-gutter: 0;
+}
+Footer {
+    height: 1;
+    position: absolute;
+}
+Button {
+    min-width: 3;
+}
+.hidden { display: none; }
+/* ----- App ----- */
+Screen {
+    layers: desktop windows active maxed fullscreen top ui critical;
+}
+Desktop {
+    layer: desktop;
+    width: 100%;
+    height: 100%;
+    background: $primary-background;
+    margin-bottom: 1; /* For Taskbar */
+}
+#background {
+    layer: desktop;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: red;
+}
+#window-container {
+    layer: windows;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+}
+#window-container.float {
+    hatch: "┼" $surface-lighten-1;
+}
+#window-container.vstack {
+    hatch: horizontal $surface-lighten-1;
+}
+#window-container.hstack {
+    hatch: "│" $surface-lighten-1;
+}
+#window-container.cascade {
+    hatch: left $surface-lighten-1;
+    align: center middle;
+}
+#window-container.bspS{
+    hatch: cross $surface-lighten-1;
+}
+#window-container.ultra{
+    hatch: "▏" $surface-lighten-1;
+}
+/* ---------- */
+Window {
+    layer: windows;
+    min-height: 1;
+    min-width: 10;
+}
+Window.float {
+    width: 80%;
+    height: 80%;
+    offset: 10% 10%;
+    position: absolute;
+}
+Window.float.active {
+    layer: active;
+}
+Window.vstack,
+Window.hstack {
+    min-height: 1;
+    min-width: 1;
+    offset-x: 0;
+    offset-y: 0;
+}
+Window.cascade {
+    width: 80%;
+    height: 80%;
+}
+Window.cascade.active{
+}
+Window #title-bar{
+    background: $window;
+    color: $text-disabled;
+    height: 1;
+    border-left: panel $window;
+    border-right: panel $window;
+}
+/*--------- Normal (Compatibility) Mode -------------*/
+Window.active Executable {
+    border: panel $window-active;
+    border-top: none;
+}
+Window.active #title-bar{
+    border-left: panel $window-active;
+    border-right: panel $window-active;
+}
+/*--------- Bleeding Edge Mode -------------
+needs noto sans symbols 2 or fonts with unicode 13.0 Symbols for Legacy Computing glyphs*/
+/*Window.active Executable {
+    outline: full $window-active;
+    outline-top: none;
+}
+Window.active #title-bar{
+    border-left: full $window-active;
+    border-right: full $window-active;
+}*/
+/*---------------------------------------------*/
+Window #title-bar Button{
+    width: 3;
+}
+Window #window-title {
+    width: 1fr;
+
+}
+Window #title-bar #exit-btn {
+    color: $text-muted;
+}
+Window.active #title-bar,
+Window.active #title-bar Button {
+    background: $window-active;
+    color: $text;
+}
+Window.active #title-bar #exit-btn {
+    background: $error;
+    color: $text;
+}
+Window.maximized {
+    layer: maxed;
+    width: 100%;
+    height: 100%;
+    offset: 0 0;
+}
+/* ---------- */
+Taskbar {
+    layer: ui;
+    dock: bottom;
+    height: auto;
+    width: 100%;
+    background: $panel;
+    color: $text;
+    height: 1;
+}
+Taskbar Button {
+    background: $panel;
+}
+Taskbar Horizontal {
+}
+Taskbar #left-taskbar{
+
+}
+Taskbar #center-taskbar{
+    width: auto;
+}
+Taskbar #right-taskbar{
+    align-horizontal: right;
+}
+Clock {
+}
+WMLayout {
+}
+/* ----- Start Menu ----- */
+#start-menu-button {
+    border: none;
+    min-width: 0;
+    padding: 0 1;
+}
+#start-menu-button:hover {
+}
+#start-menu-options {
+    dock: bottom;
+    min-width: 5;
+    height: auto;
+    max-height: 50%;
+    outline: outer $panel;
+    background: $panel;
+    padding: 0 1;
+}
+
+#start-menu-options {
+    width: 25;
+    height: auto;
+    max-height: 50%;
+    border: round $accent;
+    background: $primary-background-darken-1;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+#start-menu-options .option-list--option{
+    background: transparent;
+    color: $text-muted;
+}
+#start-menu-options .option-list--option-hover {
+    width: auto;
+    background: $boost;
+}
+#start-menu-options .option-list--option-highlighted{
+    background: $accent-lighten-1;
+    color: $text;
+}
+
+#start-menu-options .option-list--separator {
+    background: transparent;
+}
+
+StartMenuScreen {
+    background: transparent;
+    display: none;
+}
+
+DusttyTerminal {
+    width: 100%;
+    height: 100%;
+}
+
+DusttyTerminal > Input {
+    border: none;
+    background: transparent;
+    padding: 0;
+    height: 1;
+}
+
+DusttyTerminal > Input:focus {
+    border: none;
+}
+

@@ -1,0 +1,233 @@
+The Big Picture: A Layout's Job
+
+At its core, a Textual Layout has one job:
+
+    Input: It receives a list of child widgets and a rectangular area of available space.
+
+    Output: It must return a list of precise positions and sizes (WidgetPlacement) for every one of those child widgets.
+
+Think of it as a function: arrange(widgets, space) -> placements.
+The Blueprint: The Layout Class Structure
+
+Every custom layout follows this basic structure.
+Generated python
+
+      
+from textual.layout import Layout, ArrangeResult, WidgetPlacement
+from textual.geometry import Region, Size, Spacing
+
+class MyCoolLayout(Layout):
+    # 1. The name used in CSS (e.g., layout: my-cool-layout;)
+    name = "my_cool_layout"
+
+    # 2. (Optional) An __init__ for configurable parameters
+    def __init__(self, some_parameter: int = 5):
+        self.some_parameter = some_parameter
+        super().__init__()
+
+    # 3. The main method where all the magic happens
+    def arrange(
+        self, parent: Widget, children: list[Widget], size: Size
+    ) -> ArrangeResult:
+        # ... Your logic goes here ...
+
+        # The method MUST return a list of WidgetPlacement objects
+        placements: list[WidgetPlacement] = []
+        return placements
+
+ArrangeResult is just a type alias for list[WidgetPlacement].
+1. The Inputs: Understanding the arrange Arguments
+
+When your arrange method is called, Textual gives you three crucial tools:
+parent: Widget
+
+    What it is: The container widget whose children you are arranging.
+
+    Why it's useful: You can get context from it, like the total application size (parent.app.size) if you need to calculate things relative to the whole screen. You usually don't need it for simple layouts.
+
+children: list[Widget]
+
+    What it is: This is the most important input. It's the list of all widgets inside the parent container, in the order they were mounted.
+
+    Key Detail: This list includes all widgets, even ones with overlay: screen or position: absolute. Your layout logic needs to be aware of this.
+
+size: Size
+
+    What it is: The actual available space for you to work in. This is a Size(width, height) object.
+
+    Key Detail: This size has already had the parent widget's own border and padding subtracted. It's the pure content area you get to fill.
+
+2. The Calculations: Working with Geometry
+
+This is the heart of your layout. Your goal is to figure out a Region for each widget.
+The Region Object
+
+A Region(x, y, width, height) is the fundamental building block. It represents a rectangular area on the screen.
+The Key Region Methods:
+
+These are your primary tools for dividing space.
+
+    region.split_vertical(cut: int) -> tuple[Region, Region]
+
+        Makes a single vertical cut.
+
+        cut is the width of the left-hand region.
+
+        It returns two new regions: the one on the left and the one on the right.
+    Generated code
+
+          
+    +----------------------+
+    |          |           |
+    | region1  |  region2  |
+    |          |           |
+    +----------------------+
+          ^
+        cut
+
+        
+
+    IGNORE_WHEN_COPYING_START
+
+Use code with caution.
+IGNORE_WHEN_COPYING_END
+
+region.split_horizontal(cut: int) -> tuple[Region, Region]
+
+    Makes a single horizontal cut.
+
+    cut is the height of the top region.
+
+    It returns two new regions: the one on top and the one on the bottom.
+
+Generated code
+
+      
++----------------------+
+|        region1       |
++----------------------+ --- cut
+|        region2       |
++----------------------+
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution.
+IGNORE_WHEN_COPYING_END
+
+region.shrink(margin: Spacing) -> Region
+
+    This is essential for respecting widget margins.
+
+    The Spacing object has top, right, bottom, left values.
+
+    shrink returns a new region that is smaller by the margin amounts. Your layout calculates the "slot," and shrink places the widget inside that slot.
+
+Generated code
+
+      
++----------------------+
+|    (margin.top)      |
+| m +---------------+ m|
+| a |               | a|
+| r |  new region   | r|
+| g |               | g|
+| i +---------------+ i|
+| n |               | n|
+|    (margin.bottom)   |
++----------------------+
+
+    
+
+IGNORE_WHEN_COPYING_START
+
+    Use code with caution.
+    IGNORE_WHEN_COPYING_END
+
+3. The Output: The WidgetPlacement Object
+
+After all your calculations, you must create one WidgetPlacement for every widget in the original children list.
+
+WidgetPlacement(region, offset, margin, widget, order, fixed, overlay, absolute)
+
+Let's break down the arguments you need to provide:
+
+    region: Region: Required. This is the final Region you calculated for the widget's content area (i.e., after shrinking for margin).
+
+    offset: Offset: Just get this from the widget's styles. It's for the offset-x and offset-y CSS properties. offset = widget.styles.offset.resolve(...).
+
+    margin: Spacing: Required. The Spacing object representing the widget's margin (widget.styles.margin). You pass it along so Textual knows how much space to blank out.
+
+    widget: Widget: Required. The specific widget this placement applies to.
+
+    order: int: Required. The Z-index. Higher numbers are drawn on top of lower numbers. The easiest way to get this is for order, widget in enumerate(children): ....
+
+    fixed: bool: Almost always False. This is for Textual's internal fixed-positioning system.
+
+    overlay: bool: Required. Must be widget.styles.overlay == "screen".
+
+    absolute: bool: Required. Must be widget.styles.position == "absolute".
+
+A Step-by-Step Recipe for Your Next Layout
+
+    Skeleton: Create your MyLayout class and its arrange method.
+
+    Filter (Best Practice): The first thing inside arrange, create a flow_children list to separate the widgets that participate in the layout from those that don't.
+    Generated python
+
+          
+    flow_children = [
+        c for c in children
+        if c.styles.overlay != "screen" and c.styles.position != "absolute"
+    ]
+
+        
+
+    IGNORE_WHEN_COPYING_START
+
+Use code with caution. Python
+IGNORE_WHEN_COPYING_END
+
+Calculate Regions:
+
+    Create an empty dictionary: widget_regions: dict[Widget, Region] = {}.
+
+    Loop through your flow_children.
+
+    Inside the loop, use Region methods (split_vertical, etc.) to calculate the "slot" for each widget.
+
+    Store the result: widget_regions[child_widget] = calculated_region.
+
+Generate Placements:
+
+    Create an empty list: placements: list[WidgetPlacement] = [].
+
+    Loop through the original children list with enumerate to get the order.
+
+Generated python
+
+      
+for order, widget in enumerate(children):
+    # ... placement logic ...
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. Python
+IGNORE_WHEN_COPYING_END
+
+Inside the Placement Loop:
+
+    Get the widget's styles: styles = widget.styles.
+
+    Look up its region from your map: full_region = widget_regions.get(widget).
+
+    Handle non-flow widgets: If full_region is None, it's an overlay/absolute widget. Create a zero-size region and empty margin for it.
+
+    Handle flow widgets: If you found a region, shrink it by the widget's margin: region = full_region.shrink(styles.margin).
+
+    Create the final WidgetPlacement object with all the required parameters.
+
+    Append it to your placements list.
+
+Return: return placements.
