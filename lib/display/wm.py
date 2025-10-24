@@ -1,5 +1,4 @@
-from lib.display.layout import (BSPLargestLayout, BSPSpiralLayout,
-                                CascadeLayout, UltrawideLayout)
+from lib.display.layout import *
 from lib.display.window import Executable, Window
 from textual import log
 from textual.containers import Container
@@ -42,7 +41,6 @@ class WMLayout(Widget):
 
     def on_mount(self) -> None:
         """When mounted, get the initial state from the WindowManager."""
-        # This part is correct and should remain.
         wm = self.app.query_one(Desktop).wm
         self.text = f"|{wm.mode}|"
 
@@ -52,8 +50,6 @@ class WMLayout(Widget):
         self.text = f"|{new_mode}|"
 
     def render(self) -> str:
-        # This render method is fine, but we can simplify the width setting.
-        # Let's move it to a watch method for better practice.
         return self.text
 
     def watch_text(self, new_text: str) -> None:
@@ -85,11 +81,11 @@ class WindowManager:
         - change focus with alt+tab
         - spawn offset * active_windows length
         - let windows handle styles afterward
-    ultra-wide stack (unimplemented):
+    ultra-wide stack:
         - no dragging
         - change mode with h, j, k, l
         - spawn: 1) center-maximized, 2) horizontal-split, 3) %width: 25% left | 50% center | 25% right, 4..n) 25% left | 50% center | 25% vertical-stack-split right
-    bsp (unimplemented):
+    bsp:
         - recursive horizontal / vertical split of last child layout
         - no dragging
         - change focus with h, j, k, l
@@ -99,7 +95,7 @@ class WindowManager:
         self.window_container = Container(id="window-container")
         self._desktop_layer = desktop_layer
         self.mode = mode
-        self.modes = ["float", "vstack", "hstack", "bspS", 'ultra']
+        self.modes = ["float", "vstack", "hstack", "bspV", 'ultraT']
         self.active_window: Window | None = None
 
     async def on_mount(self):
@@ -125,6 +121,8 @@ class WindowManager:
 
     async def close_window(self, window_to_close: "Window") -> None:
         """The authoritative method for closing a window safely."""
+        # the dummy trick should be unneccesary now, since the DescendantFocus should be the culprit for the flicker bug
+        window_to_close.add_class("terminated")
         if not window_to_close.parent: return
 
         remaining_windows = [w for w in self.windows if w is not window_to_close]
@@ -135,8 +133,6 @@ class WindowManager:
         else:
             self.active_window = None
 
-        dummy = Container(classes="hidden")
-        await window_to_close.mount(dummy)
         await window_to_close.remove()
 
     def handle_window_maximized(self, window: Window) -> None:
@@ -160,12 +156,12 @@ class WindowManager:
 
         layout_map = {
             'float': None,
-            'vstack': "vertical",
-            'hstack': "horizontal",
+            'vstack': TiledVerticalLayout(),
+            'hstack': TiledHorizontalLayout(),
             # 'cascade': CascadeLayout(),
             # 'bspL': BSPLargestLayout(),
-            'bspS': BSPSpiralLayout(),
-            'ultra': UltrawideLayout()
+            'bspV': VerticalBSPSpiralLayout(),
+            'ultraT': UltratallLayout(),
         }
 
         self.window_container.styles.layout = layout_map.get(self.mode)
@@ -185,6 +181,15 @@ class WindowManager:
         except Exception:
             log.warning("WMLayout widget not found, can't update display.")
 
+    def handle_window_minimized(self, window: Window) -> None:
+        window.add_class("minimized")
+        remaining_windows = [w for w in self.windows if w is not window]
+        next_focus_target = remaining_windows[-1] if remaining_windows else None
+        if next_focus_target:
+            self.set_active_window(next_focus_target)
+        else:
+            self.active_window = None
+
     def set_active_window(self, window: "Window") -> None:
         """Sets the active window, applies CSS, and focuses its content."""
         if self.active_window is window: return
@@ -192,6 +197,7 @@ class WindowManager:
             self.active_window.remove_class("active")
 
         window.add_class("active")
+        window.remove_class("minimized")
         self.active_window = window
         window.executable.focus_content()
 

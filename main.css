@@ -35,8 +35,8 @@ Footer {
 Button {
     min-width: 3;
 }
-.hidden { display: none; }
-/* ----- App ----- */
+.hidden, .minimized { display: none; }
+/* ----- App (Move as Default CSS later) ----- */
 Screen {
     layers: desktop windows active maxed fullscreen top ui critical;
 }
@@ -86,9 +86,9 @@ Window {
     min-width: 10;
 }
 Window.float {
-    width: 80%;
-    height: 80%;
-    offset: 10% 10%;
+    width: 80;
+    height: 20;
+    offset: 0 0;
     position: absolute;
 }
 Window.float.active {
@@ -237,19 +237,26 @@ StartMenuScreen {
     display: none;
 }
 
-DusttyTerminal {
-    width: 100%;
-    height: 100%;
-}
 
-DusttyTerminal > Input {
-    border: none;
-    background: transparent;
-    padding: 0;
-    height: 1;
+Window.active.edge-hover-left Executable{
+    border: panel $window-active;
+    border-left: panel $primary-lighten-2;
+    border-top: none;
 }
-
-DusttyTerminal > Input:focus {
-    border: none;
+Window.active.edge-hover-right Executable{
+    border: panel $window-active;
+    border-right: panel $primary-lighten-2;
+    border-top: none;
 }
-
+Window.active.edge-hover-bottom Executable{
+    border: panel $window-active;
+    border-bottom: panel $primary-lighten-2;
+    border-top: none;
+}
+Window.active.edge-hover-top  #title-bar{
+    border-left: panel $primary-lighten-2;
+    border-right: panel $primary-lighten-2;
+}
+Window.active.edge-hover-top  #title-bar{
+    background: $primary-lighten-2;
+}

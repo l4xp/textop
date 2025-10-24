@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import operator
+from fractions import Fraction
 from typing import TYPE_CHECKING, Literal, Optional
 
 from textual._resolve import resolve_box_models
-from textual.geometry import Region, Size, Spacing
+from textual.geometry import NULL_OFFSET, Region, Size, Spacing
 from textual.layout import ArrangeResult, Layout, WidgetPlacement
 
 if TYPE_CHECKING:
     from textual.widget import Widget
+
+__all__ = ["CascadeLayout", "BSPLargestLayout", "BSPSpiralLayout",
+           "VerticalBSPSpiralLayout", "UltrawideLayout", "UltratallLayout",
+           "TiledHorizontalLayout", "TiledVerticalLayout"]
 
 """
 conceptual layouts
@@ -27,6 +32,7 @@ Windows spawn in an organized stack.
 Users can then drag them around freely.
 A "tidy" command can instantly restore the perfect cascade arrangement.
 """
+
 
 class CascadeLayout(Layout):
     """
@@ -361,6 +367,116 @@ class BSPSpiralLayout(Layout):
         return leaves
 
 
+class VerticalBSPSpiralLayout(Layout):
+    """
+    +-----------------+
+    |        1        |
+    +--------+--------+
+    |        |   3    |
+    |    2   +--------+
+    |        |   4    |
+    +--------+--------+
+    """
+    name = "bsp_spiral_vertical"
+
+    class Node:
+        """A node in the BSP tree."""
+        def __init__(self, widget: Widget | None = None):
+            self.widget = widget
+            self.left: VerticalBSPSpiralLayout.Node | None = None
+            self.right: VerticalBSPSpiralLayout.Node | None = None
+            self.region = Region()
+
+    def arrange(
+        self, parent: Widget, children: list[Widget], size: Size
+    ) -> ArrangeResult:
+        parent.pre_layout(self)
+
+        flow_children = [
+            c for c in children
+            if c.styles.overlay != "screen" and c.styles.position != "absolute"
+        ]
+
+        if not flow_children:
+            return []
+
+        # 1. Build the right-leaning binary tree structure
+        root = self._build_tree(flow_children)
+
+        # 2. Recursively partition the space, starting with depth 0
+        self._arrange_nodes(root, Region(0, 0, size.width, size.height), depth=0)
+
+        # 3. Collect the final regions from the leaf nodes of the tree
+        leaf_nodes = self._get_leaf_nodes(root)
+        node_map: dict[Widget, VerticalBSPSpiralLayout.Node] = {
+            node.widget: node for node in leaf_nodes if node.widget
+        }
+
+        # 4. Create the final placements, ignoring widget styles for a strict tiling behavior
+        placements: list[WidgetPlacement] = []
+        for order, widget in enumerate(children):
+            node = node_map.get(widget)
+            styles = widget.styles
+            if node:
+                # Strict tiling: ignore margins and offsets
+                region = node.region
+                margin = Spacing()
+            else:
+                region = Region(0, 0, 0, 0)
+                margin = Spacing()
+
+            offset = NULL_OFFSET
+            placements.append(
+                WidgetPlacement(
+                    region, offset, margin, widget, order, False,
+                    styles.overlay == "screen", styles.position == "absolute"
+                )
+            )
+        return placements
+
+    def _build_tree(self, widgets: list[Widget]) -> Node:
+        """Builds a right-leaning tree suitable for a spiral layout."""
+        if not widgets:
+            return self.Node()
+
+        root = self.Node(widgets[0])
+        for widget in widgets[1:]:
+            node = root
+            # Traverse to the right-most node
+            while node.right:
+                node = node.right
+            # Replace the leaf node with a new internal node
+            leaf_widget = node.widget
+            node.widget = None
+            node.left = self.Node(leaf_widget)
+            node.right = self.Node(widget)
+        return root
+
+    def _arrange_nodes(self, node: Node, region: Region, depth: int):
+        """Recursively splits the region and assigns it to child nodes."""
+        node.region = region
+        if node.left and node.right:
+            if depth % 2 == 0:
+                region1, region2 = region.split_horizontal(region.height // 2)
+            else:
+                region1, region2 = region.split_vertical(region.width // 2)
+
+            # Recurse into children with increased depth
+            self._arrange_nodes(node.left, region1, depth + 1)
+            self._arrange_nodes(node.right, region2, depth + 1)
+
+    def _get_leaf_nodes(self, node: Node) -> list[Node]:
+        """Traverse the tree to find all leaf nodes (which contain widgets)."""
+        if not node.left and not node.right:
+            return [node] if node.widget else []
+        nodes = []
+        if node.left:
+            nodes.extend(self._get_leaf_nodes(node.left))
+        if node.right:
+            nodes.extend(self._get_leaf_nodes(node.right))
+        return nodes
+
+
 class UltrawideLayout(Layout):
     """
     +-----+-----+-----+-----+
@@ -447,6 +563,298 @@ class UltrawideLayout(Layout):
                 WidgetPlacement(
                     region, offset, margin, widget, order, False,
                     styles.overlay == "screen", styles.position == "absolute"
+                )
+            )
+        return placements
+
+
+class UltratallLayout(Layout):
+    """
+    +-----------------------+
+    |           1           |
+    +-----------------------+
+    |                       |
+    |           2           |
+    |                       |
+    +-----------+-----------+
+    |     3     |     4     |
+    +-----------+-----------+
+    """
+    name = "ultratall"
+
+    def __init__(self, master_pane_fraction: float = 0.5):
+        """
+        Args:
+            master_pane_fraction: The fraction of the total height
+                                  that the master pane (widget 2) should occupy.
+        """
+        self.master_pane_fraction = master_pane_fraction
+        super().__init__()
+
+    def arrange(
+        self, parent: Widget, children: list[Widget], size: Size
+    ) -> ArrangeResult:
+        parent.pre_layout(self)
+
+        flow_children = [
+            c for c in children
+            if c.styles.overlay != "screen" and c.styles.position != "absolute"
+        ]
+
+        widget_regions: dict[Widget, Region] = {}
+        count = len(flow_children)
+
+        if count == 0:
+            pass
+        elif count == 1:
+            # A single widget fills the entire space
+            widget_regions[flow_children[0]] = Region(0, 0, size.width, size.height)
+        elif count == 2:
+            # Two widgets split the space vertically
+            widget1, widget2 = flow_children
+            region1, region2 = Region(0, 0, size.width, size.height).split_horizontal(size.height // 2)
+            widget_regions[widget1] = region1
+            widget_regions[widget2] = region2
+        else:  # count >= 3
+            # Calculate the heights of the three main sections
+            master_height = int(size.height * self.master_pane_fraction)
+            side_height = (size.height - master_height) // 2
+
+            # Define the three main regions
+            top_row_region = Region(0, 0, size.width, side_height)
+            master_region = Region(0, side_height, size.width, master_height)
+
+            bottom_row_y = side_height + master_height
+            bottom_row_height = size.height - bottom_row_y
+            bottom_row_region = Region(0, bottom_row_y, size.width, bottom_row_height)
+
+            # Assign the first two widgets to the top row and master pane
+            widget_regions[flow_children[0]] = top_row_region
+            widget_regions[flow_children[1]] = master_region
+
+            # Arrange the remaining widgets horizontally in the bottom row
+            bottom_stack_widgets = flow_children[2:]
+            stack_count = len(bottom_stack_widgets)
+
+            if stack_count > 0:
+                # Use the robust division method to split the bottom row's width
+                total_content_width = bottom_row_region.width
+                x_offset = bottom_row_region.x
+
+                for i, widget_in_stack in enumerate(bottom_stack_widgets):
+                    start_x = (total_content_width * i) // stack_count
+                    end_x = (total_content_width * (i + 1)) // stack_count
+                    pane_width = end_x - start_x
+
+                    pane_region = Region(
+                        x=x_offset + start_x,
+                        y=bottom_row_region.y,
+                        width=pane_width,
+                        height=bottom_row_region.height
+                    )
+                    widget_regions[widget_in_stack] = pane_region
+
+        # This final placement loop is standard for our container-driven layouts
+        placements: list[WidgetPlacement] = []
+        for order, widget in enumerate(children):
+            styles = widget.styles
+            full_region = widget_regions.get(widget)
+
+            if full_region is None:
+                region = Region(0, 0, 0, 0)
+                margin = Spacing()
+            else:
+                # To be a strict tiling manager, we ignore the widget's own margins.
+                # If you wanted widgets to have internal padding, you would use:
+                # region = full_region.shrink(styles.margin)
+                region = full_region
+                margin = Spacing()
+
+            # We also ignore the widget's own offset.
+            offset = NULL_OFFSET
+
+            placements.append(
+                WidgetPlacement(
+                    region, offset, margin, widget, order, False,
+                    styles.overlay == "screen", styles.position == "absolute"
+                )
+            )
+        return placements
+
+
+class TiledHorizontalLayout(Layout):
+    """
+    Lays out Widgets horizontally, IGNORING their margins, offsets, and sizes.
+    This layout acts like a true tiling window manager, dividing the available
+    space equally among its children and enforcing a fixed gutter between them.
+    """
+
+    name = "tiled_horizontal"
+
+    def __init__(self, gutter: int = 0):
+        self.gutter = gutter
+        super().__init__()
+
+    def arrange(
+        self, parent: Widget, children: list[Widget], size: Size
+    ) -> ArrangeResult:
+        parent.pre_layout(self)
+
+        # 1. Filter for "flow" children, same as the reference layouts.
+        flow_children = [
+            c for c in children
+            if c.styles.overlay != "screen" and c.styles.position != "absolute"
+        ]
+
+        # Use a dictionary to map widgets to their calculated regions.
+        widget_regions: dict[Widget, Region] = {}
+        count = len(flow_children)
+
+        if count > 0:
+            # 2. REMOVED: The call to `resolve_box_models` is gone.
+            #    We now calculate widget widths manually.
+
+            # Calculate total space taken by gutters.
+            total_gutter = self.gutter * (count - 1)
+            # Calculate the remaining horizontal space for the widgets themselves.
+            total_content_width = size.width - total_gutter
+
+            # Use integer division to distribute space, giving remainders to the left-most widgets.
+            x = 0
+            for i, widget in enumerate(flow_children):
+                # This formula distributes the remainder pixels fairly
+                start_x = (total_content_width * i) // count
+                end_x = (total_content_width * (i + 1)) // count
+                widget_width = end_x - start_x
+
+                # The region for this widget fills the parent's height.
+                widget_regions[widget] = Region(
+                    x=x, y=0, width=widget_width, height=size.height
+                )
+
+                # Advance x by the widget's width plus the gutter for the next one.
+                x += widget_width + self.gutter
+
+        # 3. This final placement loop is now almost identical to the reference layouts.
+        placements: list[WidgetPlacement] = []
+        for order, widget in enumerate(children):
+            styles = widget.styles
+
+            # Look up the pre-calculated region for this widget.
+            full_region = widget_regions.get(widget)
+
+            if full_region is None:
+                # This is a non-flow widget (absolute/overlay) or there are no flow children.
+                region = Region(0, 0, 0, 0)
+                margin = Spacing()
+            else:
+                # A flow widget. We completely ignore its own margin and size styles.
+                region = full_region
+                margin = Spacing()
+
+            # We also completely ignore the widget's offset style.
+            offset = NULL_OFFSET
+
+            placements.append(
+                WidgetPlacement(
+                    region,
+                    offset,
+                    margin,
+                    widget,
+                    order,
+                    False,
+                    styles.overlay == "screen",
+                    styles.position == "absolute",
+                )
+            )
+        return placements
+
+
+class TiledVerticalLayout(Layout):
+    """
+    Lays out Widgets vertically, IGNORING their margins, offsets, and sizes.
+    This layout acts like a true tiling window manager, dividing the available
+    space equally among its children and enforcing a fixed gutter between them.
+    """
+
+    name = "tiled_vertical"
+
+    def __init__(self, gutter: int = 0):
+        self.gutter = gutter
+        super().__init__()
+
+    def arrange(
+        self, parent: Widget, children: list[Widget], size: Size
+    ) -> ArrangeResult:
+        parent.pre_layout(self)
+
+        flow_children = [
+            c for c in children
+            if c.styles.overlay != "screen" and c.styles.position != "absolute"
+        ]
+
+        # Use a dictionary to map widgets to their calculated regions.
+        widget_regions: dict[Widget, Region] = {}
+        count = len(flow_children)
+
+        if count > 0:
+            # 2. REMOVED: The call to `resolve_box_models` is gone.
+            #    We now do our own simple math.
+
+            # Calculate total space taken by gutters.
+            total_gutter = self.gutter * (count - 1)
+            # Calculate the remaining vertical space for the widgets themselves.
+            total_content_height = size.height - total_gutter
+
+            # Use integer division to distribute space, giving remainders to the top widgets.
+            y = 0
+            for i, widget in enumerate(flow_children):
+                # This formula distributes the remainder pixels fairly
+                start_y = (total_content_height * i) // count
+                end_y = (total_content_height * (i + 1)) // count
+                widget_height = end_y - start_y
+
+                # The region for this widget fills the parent's width.
+                widget_regions[widget] = Region(
+                    x=0, y=y, width=size.width, height=widget_height
+                )
+
+                # Advance y by the widget's height plus the gutter for the next one.
+                y += widget_height + self.gutter
+
+        # 3. This final placement loop is now almost identical to UltrawideLayout's.
+        placements: list[WidgetPlacement] = []
+        for order, widget in enumerate(children):
+            styles = widget.styles
+
+            # Look up the pre-calculated region for this widget.
+            full_region = widget_regions.get(widget)
+
+            if full_region is None:
+                # This is a non-flow widget (absolute/overlay) or there are no flow children.
+                region = Region(0, 0, 0, 0)
+                margin = Spacing()
+            else:
+                # A flow widget. We completely ignore its own margin styles.
+                # If you wanted to respect margins for *internal* padding,
+                # you would do: region = full_region.shrink(styles.margin)
+                # But to be a strict tiling manager, we ignore it.
+                region = full_region
+                margin = Spacing()
+
+            # We also completely ignore the widget's offset style.
+            offset = NULL_OFFSET
+
+            placements.append(
+                WidgetPlacement(
+                    region,
+                    offset,
+                    margin,
+                    widget,
+                    order,
+                    False,
+                    styles.overlay == "screen",
+                    styles.position == "absolute",
                 )
             )
         return placements

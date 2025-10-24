@@ -60,21 +60,19 @@ MISC DONE:
 - fix maximize not working on active window
 - initial window jump on drag, no longer
 - terminal -> custom string parsing + vfs (to separate)
+- fix dummy exit
+- impl. minimize
+- impl. resize windows via keys
 
 CONTINUE:
 VFS
 
 TODO PRIO
-- minimize / restore
 - taskbar
-- window resizing
 - notif toast (key toast)
 - vfs
 - workspace
 - user system
-
-TO FIX:
-- dummy exit trick looks annoying
 
 |--------------------|
 | Settings      - + x|
@@ -107,6 +105,7 @@ from textual._border import BORDER_CHARS, BORDER_LOCATIONS
 from textual.app import App, ComposeResult
 from textual.css.constants import VALID_BORDER
 from textual.events import MouseMove
+from textual.geometry import Offset, Region
 
 # =============================================================================
 # Textual Patch
@@ -151,6 +150,7 @@ class TextTop(App):
         ("ctrl+f12", "pause_dom_inspector", "Pause Inspector"),
         ("alt+q", "sys_kill()", "")
     ]
+    mouse_coords = (0, 0)
 
     def compose(self) -> ComposeResult:
         yield Desktop(id="desktop")
@@ -209,30 +209,64 @@ class TextTop(App):
         overlay.toggle_visibility()
 
     async def on_mouse_move(self, event: MouseMove) -> None:
-        # debug app overlay
+        self.mouse_coords = (event.screen_x, event.screen_y)
         overlay = self.query_one(DomInfoOverlay)
-
         if overlay.is_visible:
-            widget_under_mouse, _ = self.get_widget_at(event.x, event.y)
-            target = widget_under_mouse or self.focused
-
+            widget_under_mouse_local, _ = self.get_widget_at(event.x, event.y)
+            target = widget_under_mouse_local or self.focused
             if target and target is not overlay and overlay not in target.ancestors:
                 overlay.update_and_position(event.x, event.y, target)
 
-        # debug app taskbar
         debug_executable = next((w for w in self.query(Debug)), None)
-        if debug_executable:
-            debug_content_widget = debug_executable.query_one(DebugContent)
+        if not debug_executable:
+            return
 
-            widget_under_mouse, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
-            widget_id = getattr(widget_under_mouse, 'id', 'N/A')
-            widget_class = widget_under_mouse.__class__.__name__ if widget_under_mouse else "None"
+        debug_content_widget = debug_executable.query_one(DebugContent)
 
-            info_text = (
-                f"Mouse (Global): X={event.screen_x}, Y={event.screen_y}\n"
-                f"Widget Below: {widget_class} (ID: {widget_id})"
+        widget_under_mouse = event.control
+
+        info_text = (
+            f"--- Mouse Info ---\n"
+            f"Global (screen): ({event.screen_x}, {event.screen_y})\n"
+            f"Local (app):   ({event.x}, {event.y})\n"
+        )
+
+        if widget_under_mouse and widget_under_mouse.is_mounted:
+            widget_size = widget_under_mouse.size
+
+            widget_screen_offset = self.screen.get_offset(widget_under_mouse)
+            widget_screen_region = Region(
+                widget_screen_offset.x,
+                widget_screen_offset.y,
+                widget_size.width,
+                widget_size.height,
             )
-            debug_content_widget.update_info(info_text)
+
+            widget_local_x = event.screen_x - widget_screen_region.x
+            widget_local_y = event.screen_y - widget_screen_region.y
+
+            info_text += (
+                f"\n--- Widget Under Mouse (from event.control) ---\n"
+                f"Class: {widget_under_mouse.__class__.__name__}\n"
+                f"ID: {getattr(widget_under_mouse, 'id', 'N/A')}\n"
+                f"Region (parent): {widget_under_mouse.region}\n"
+                f"Region (screen): {widget_screen_region}\n"
+                f"Mouse (widget):  ({widget_local_x}, {widget_local_y})\n"
+                f"Offset Style: {widget_under_mouse.styles.offset}\n"
+                f"Mounted: {widget_under_mouse.is_mounted}"
+            )
+
+            last_widget = getattr(self, "_last_debug_widget", None)
+            if widget_under_mouse is not last_widget:
+                self.log.info(f"--- Hover Changed ---")
+                self.log.info(f"Mouse looking at {widget_under_mouse} via event.control")
+                self._last_debug_widget = widget_under_mouse
+
+        else:
+            info_text += "\n--- Widget Under Mouse ---\nNone"
+            self._last_debug_widget = None
+
+        debug_content_widget.update_info(info_text)
 
 
 if __name__ == "__main__":
