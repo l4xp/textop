@@ -43,7 +43,7 @@ class TitleBar(Horizontal):
         """Initiates a window drag operation when the title bar is clicked."""
         if self._window.wm.mode == 'float':  # to refactor: move wm logic to wm
             self._window.start_drag(event)
-            event.stop()
+            # event.stop()
 
 
 class Executable(Container):
@@ -107,6 +107,7 @@ class Window(Container):
         self.is_window_resizing: bool = False
         self.is_window_maximized: bool = False
         self.user_offset: tuple[int, int] | None = None
+        self.window_size: tuple[int, int] | None = None  # window size state snapshot
         self.uuid = f"{uuid4().hex[:6]}"
 
         # Drag and Resize Internals
@@ -374,7 +375,10 @@ class Window(Container):
     @on(Button.Pressed, "#maximize-btn")
     def toggle_maximize_window(self, event: Button.Pressed) -> None:
         """Updates internal state and tells the WindowManager to handle the visuals."""
-        self.is_window_maximized = not self.is_window_maximized
+        if not self.is_window_maximized:
+            self.window_size = self.size
+            self.window_offset = self.styles.offset
         self.wm.handle_window_maximized(self)
+        self.is_window_maximized = not self.is_window_maximized
         self.query_one('#maximize-btn').label = glyphs.title_bar["restore"] if self.is_window_maximized else glyphs.title_bar["maximize"]
         event.stop()

@@ -137,14 +137,17 @@ class WindowManager:
 
     def handle_window_maximized(self, window: Window) -> None:
         """Applies/removes the maximized class based on window state."""
-        # if TO BE maximimized
+        # if already maximized
         if window.is_window_maximized:
-            window.add_class("maximized")
-            window.styles.offset = None
-        else:
             window.remove_class("maximized")
             if self.mode == 'float':
                 window.styles.offset = window.window_offset
+                window.styles.width, window.styles.height = window.window_size
+        else:
+            window.add_class("maximized")
+            window.styles.width = None
+            window.styles.height = None
+            window.styles.offset = None
 
     def change_mode(self, mode: str | None = None, initial: bool = False) -> None:
         """Changes the layout mode by setting the style on window container."""
