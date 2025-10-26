@@ -6,6 +6,7 @@ from textual.widgets import TextArea
 class Notepad(Executable):
     """A simple text editor application."""
     APP_NAME = "Notepad"
+    APP_ID = "notepad"
     MAIN_WIDGET = TextArea
 
     DEFAULT_CSS = """

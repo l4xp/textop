@@ -4,16 +4,16 @@ import lib.display.glyphs as glyphs
 from bin.debug import Debug
 from bin.notepad import Notepad
 from bin.terminal import Dustty
-from lib.core.events import Run
+from lib.core.events import ActiveWindowsChanged, Run
 from lib.core.widgets import UIButton
-from lib.display.wm import WMLayout
+from lib.display.wm import Desktop, WMLayout
 from textual import log, on
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.events import Click, Key
 from textual.message import Message
 from textual.reactive import reactive
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, OptionList, Select
 from textual.widgets.option_list import Option
@@ -56,15 +56,51 @@ TASKBAR TODO
 Left Click > open | minimize | maximize
 """
 
-# Define a custom message to run an application
+# # Define a custom message to run an application
 class RunApp(Message):
     def __init__(self, app_id: str):
         self.app_id = app_id
         super().__init__()
 
 
+class ActiveWindowsScreen(ModalScreen):
+    """A modal screen to show active windows for an app."""
+
+    def __init__(self, app_id: str, windows: list, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.app_id = app_id
+        self.windows = windows
+
+    def compose(self) -> ComposeResult:
+        options = []
+        for i, window in enumerate(self.windows):
+            options.append(Option(f"{window.executable.APP_NAME} - {i+1}", id=window.uuid))
+        options.append(Option(f"New {self.app_id.capitalize()}", id=f"new_{self.app_id}"))
+        yield OptionList(*options, id="active-windows-list")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss()
+        if event.option.id.startswith("new_"):
+            if self.app_id == "notepad":
+                self.app.post_message(Run(Notepad()))
+            elif self.app_id == "terminal":
+                self.app.post_message(Run(Dustty()))
+            elif self.app_id == "debug":
+                self.app.post_message(Run(Debug()))
+        else:
+            for window in self.windows:
+                if window.id == event.option.id:
+                    desktop = self.app.query_one(Desktop)
+                    desktop.wm.set_active_window(window)
+                    break
+
+
 class Taskbar(Horizontal):
     """The bottom taskbar with application launchers and widgets."""
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.active_windows: dict[str, list] = {}
+
     def compose(self) -> ComposeResult:
         with Horizontal(id="left-taskbar"):
             yield StartButton()
@@ -76,17 +112,35 @@ class Taskbar(Horizontal):
             yield WMLayout()
             yield Clock()
 
-    @on(Button.Pressed, "#btn-notepad")
-    def open_notepad(self):
-        self.post_message(Run(Notepad()))
+    def update_active_windows(self, message: ActiveWindowsChanged) -> None:
+        """Updates the taskbar state and button appearance."""
+        log(f"Taskbar received new window state: {message.active_windows}")
+        self.active_windows = message.active_windows
 
-    @on(Button.Pressed, "#btn-terminal")
-    def open_terminal(self):
-        self.post_message(Run(Dustty()))
+        # Update button borders
+        for button in self.query("UIButton"):
+            app_id = button.id.replace("btn-", "")
+            if app_id in self.active_windows:
+                button.add_class("active")
+            else:
+                button.remove_class("active")
 
-    @on(Button.Pressed, "#btn-debug")
-    def open_debug(self):
-        self.post_message(Run(Debug()))
+    @on(Button.Pressed)
+    def handle_button_press(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id and button_id.startswith("btn-"):
+            app_id = button_id.replace("btn-", "")
+            active_app_windows = self.active_windows.get(app_id)
+
+            if active_app_windows:
+                self.app.push_screen(ActiveWindowsScreen(app_id, active_app_windows))
+            else:
+                if app_id == "notepad":
+                    self.post_message(Run(Notepad()))
+                elif app_id == "terminal":
+                    self.post_message(Run(Dustty()))
+                elif app_id == "debug":
+                    self.post_message(Run(Debug()))
 
 
 class Clock(Widget):

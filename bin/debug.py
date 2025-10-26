@@ -29,5 +29,6 @@ class DebugContent(Container):
 class Debug(Executable):
     """This is the blueprint definition. It links metadata to the content widget."""
     APP_NAME = "Debug"
+    APP_ID = "debug"
     APP_ICON = " ● "
     MAIN_WIDGET = DebugContent

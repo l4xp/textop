@@ -51,6 +51,7 @@ class Executable(Container):
     A base class for creating windowed applications. This widget serves as the
     content area of a window.
     """
+    APP_ID: str = 'base_app'
     APP_NAME: str = "Untitled App"
     APP_ICON: str = " ~ "
     MAIN_WIDGET: type[Widget] | None = None
@@ -122,6 +123,11 @@ class Window(Container):
         self.EDGE_MARGIN: int = 1
         self.MIN_WIDTH: int = 12
         self.MIN_HEIGHT: int = 4
+        self.init_width: int = 80
+        self.init_height: int = 20
+
+        # Support
+        self.multiple_instance: bool = True
 
     # ┌───────────────────────────────────────────────────────────────────────┐
     # │ Lifecycle & Compose Methods                                           │
@@ -131,6 +137,7 @@ class Window(Container):
         """Get a reference to the WindowManager and set initial offset."""
         self.wm = self.screen.query_one("#desktop", Container).wm
         self.window_offset = self.styles.offset
+        self.styles.width, self.styles.height = self.init_width, self.init_height
 
     def compose(self) -> ComposeResult:
         """Composes the window with a TitleBar and the Executable content."""
@@ -151,12 +158,13 @@ class Window(Container):
         self.wm.set_active_window(self)
         event.stop()
 
-    def _increase_window_size(self, value: int = 1, direction: str = "right"):
+    def _increase_window_size(self, delta: int = 1, direction: str = "right"):
+        """Increase or decrease window size in the given direction with min-size safety."""
+
         def _to_cells(style_value) -> int:
             """Convert any Dimension/Scalar into an absolute cell count."""
             size = self.parent.size if self.parent else self.size
             viewport = self.app.size if self.app else Size(80, 24)
-
             try:
                 return int(round(style_value.resolve(size, viewport)))
             except Exception:
@@ -167,28 +175,35 @@ class Window(Container):
         x = _to_cells(self.styles.offset.x)
         y = _to_cells(self.styles.offset.y)
 
-        match direction:
-            case "right":
-                self.styles.width = w + value
-            case "left":
-                if w > self.MIN_WIDTH:
-                    self.styles.offset = (x - value, int(self.styles.offset.y.value))
-                    self.styles.width = w + value
-                    offset = (int(self.styles.offset.x.value), int(self.styles.offset.y.value))
-                    self.window_offset = offset
-                    self.user_offset = offset
-            case "top":
-                if h > self.MIN_HEIGHT:
-                    self.styles.offset = (int(self.styles.offset.x.value), y - value)
-                    self.styles.height = h + value
-                    offset = (int(self.styles.offset.x.value), int(self.styles.offset.y.value))
-                    self.window_offset = offset
-                    self.user_offset = offset
-            case "bottom":
-                self.styles.height = h + value
+        def _set_offset(new_x: int, new_y: int):
+            self.styles.offset = (new_x, new_y)
+            offset = (int(self.styles.offset.x.value), int(self.styles.offset.y.value))
+            self.window_offset = offset
+            self.user_offset = offset
+
+        if direction == "right":
+            new_w = max(self.MIN_WIDTH, w + delta)
+            self.styles.width = new_w
+
+        elif direction == "left":
+            new_w = max(self.MIN_WIDTH, w + delta)
+            shift_x = new_w - (w - delta)
+            _set_offset(x + delta - shift_x, y)
+            self.styles.width = new_w
+
+        elif direction == "top":
+            new_h = max(self.MIN_HEIGHT, h + delta)
+            shift_y = new_h - (h - delta)
+            _set_offset(x, y + delta - shift_y)
+            self.styles.height = new_h
+
+        elif direction == "bottom":
+            new_h = max(self.MIN_HEIGHT, h + delta)
+            self.styles.height = new_h
 
     def on_key(self, event: Key) -> None:
         # --- Handle key events ---
+        # self.notify(event.key, title="key")
         if event.key == "alt+r":
             self.is_window_resizing = not self.is_window_resizing
             self.is_window_dragging = False
@@ -196,14 +211,13 @@ class Window(Container):
                 self.add_class("resize-mode")
             else:
                 self.remove_class("resize-mode")
-            event.stop()
             return
 
         match event.key:
             case "ctrl+h":
                 self._increase_window_size(1, "left")
             case "ctrl+j":
-                self.styles.height = (self.styles.height.value + 1)  # simpler way lol, fix tommorrow
+                self._increase_window_size(1, "bottom")
             case "ctrl+k":
                 self._increase_window_size(1, "top")
             case "ctrl+l":  # grow rightward

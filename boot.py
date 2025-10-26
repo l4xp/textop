@@ -32,7 +32,7 @@ Window Management:
   - [ ] Workspaces
 
 Desktop Features:
-  - [ ] Notification/toast system.
+  - [X] Notification/toast system.
   - [ ] Start menu populated from an application directory.
   - [ ] Search functionality.
   - [ ] Advanced applications: File Manager, Image Viewer, Music Player.
@@ -63,13 +63,15 @@ MISC DONE:
 - fix dummy exit
 - impl. minimize
 - impl. resize windows via keys
+- windows fix
+- keypress toast
 
 CONTINUE:
+taskbar
 VFS
 
 TODO PRIO
 - taskbar
-- notif toast (key toast)
 - vfs
 - workspace
 - user system
@@ -95,17 +97,21 @@ import lib.display.glyphs as glyphs
 from bin.debug import Debug, DebugContent
 from bin.notepad import Notepad
 from bin.terminal import Dustty
-from lib.core.events import Run
+from lib.core.events import ActiveWindowsChanged, Run
+from lib.core.widgets import UIToast
 from lib.debug2 import DomInfoOverlay
 from lib.display.bar import Taskbar
 from lib.display.window import Window
 from lib.display.wm import Desktop
-from textual import log, on
+from textual import log, on, timer
 from textual._border import BORDER_CHARS, BORDER_LOCATIONS
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, Timer
+from textual.containers import Container
 from textual.css.constants import VALID_BORDER
 from textual.events import MouseMove
 from textual.geometry import Offset, Region
+from textual.reactive import reactive
+from textual.widgets import Label
 
 # =============================================================================
 # Textual Patch
@@ -152,13 +158,36 @@ class TextTop(App):
     ]
     mouse_coords = (0, 0)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.toast = UIToast()
+        self.hide_toast_timer: Timer | None = None
+
     def compose(self) -> ComposeResult:
+        yield self.toast
         yield Desktop(id="desktop")
         yield Taskbar(id="taskbar")
         yield DomInfoOverlay(id="dom_info_overlay")
 
+    def on_key(self, event):
+        # keys = [key[0] for key in self.BINDINGS]
+        # if event.key in keys:
+        self.show_keypress(f"{event.key}")
+
     def on_mount(self) -> None:
         self.wm = self.query_one(Desktop).wm
+
+    def show_keypress(self, message: str, timeout: float = 1.5):
+        self.toast.show(message)
+
+        if self.hide_toast_timer:
+            self.hide_toast_timer.stop()
+
+        self.hide_toast_timer = self.set_timer(timeout, self.toast.hide)
+
+    @on(ActiveWindowsChanged)
+    def update_taskbar(self, message: ActiveWindowsChanged):
+        self.query_one(Taskbar).update_active_windows(message)
 
     @on(Run)
     async def on_run(self, message: Run) -> None:

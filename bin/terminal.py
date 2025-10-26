@@ -122,7 +122,6 @@ class VFSTerminalWidget(Widget):
         self.history_container = self.query_one("#history-container", Container)
         self.current_prompt = self.query_one("#current-prompt", PromptWidget)
 
-        # Update the prompt text and display a welcome message
         self._update_prompt_label()
         welcome_message = "Welcome to the Dustty Terminal!\nType 'help' for available commands."
         self.history_container.mount(Static(welcome_message, classes="welcome"))
@@ -142,7 +141,6 @@ class VFSTerminalWidget(Widget):
         if event.is_printable and not input_widget.has_focus:
             self.scroll_to_bottom()
             input_widget.focus()
-            # Forward the key event to the now-focused input
             input_widget.post_message(event)
             event.stop()
 
@@ -161,7 +159,6 @@ class VFSTerminalWidget(Widget):
         input_widget = event.input
         command_str = event.value
 
-        # --- Step 1: Prepare all new widgets in memory (no DOM changes yet) ---
         user_label = self.current_prompt.query_one("#prompt-user", Label)
         path_label = self.current_prompt.query_one("#prompt-path", Label)
         symbol_label = self.current_prompt.query_one("#prompt-symbol", Label)
@@ -169,7 +166,6 @@ class VFSTerminalWidget(Widget):
         static_user = Static(user_label.renderable, id="prompt-user")
         static_path = Static(path_label.renderable, id="prompt-path")
         static_symbol = Static(symbol_label.renderable, id="prompt-symbol")
-        # You had this right, but the class was missing from the last version
         static_command = Static(command_str, classes="prompt-command")
 
         frozen_prompt_container = Horizontal(
@@ -183,15 +179,13 @@ class VFSTerminalWidget(Widget):
             result = self._execute_command(command_str.strip())
             if result:
                 content, style_class = result
-                widgets_to_add.append(Static(content, classes=style_class))
+                widgets_to_add.append(Static(content, classes=style_class, markup=False))
 
-        # --- Step 2: Apply all DOM changes in a single, atomic batch ---
         with self.app.batch_update():
             self.history_container.mount(*widgets_to_add)
             input_widget.clear()
             self._update_prompt_label()
 
-        # --- Step 3: Scroll to the bottom AFTER the batch has been rendered ---
         self.scroll_to_bottom()
 
     def _execute_command(self, command_str: str) -> Optional[Tuple[str, str]]:
@@ -208,14 +202,10 @@ class VFSTerminalWidget(Widget):
             args = parts[1:]
 
             if command_name in self.commands:
-                # The command function itself will return the tuple or None
                 return self.commands[command_name](args)
             else:
-                # Return content and the 'error' class for styling
                 return (f"Command not found: {command_name}", "error")
         except Exception as e:
-            # Catch any other errors (e.g., from shlex or VFS)
-            # and return them with the 'error' class
             return (str(e), "error")
 
     def scroll_to_bottom(self, animate: bool = False):
@@ -262,20 +252,16 @@ class VFSTerminalWidget(Widget):
         If COMMAND is specified, gives detailed help on that command.
         """
         if not args:
-            # Use rich markup to style the header!
             header = (
                 "Sandboxed Shell, v1.0\n"
                 "Type `help [bold]\\[command][/]` for more info.\n"
             )
-            # ... (rest of the logic is the same)
             summaries = [f"  {name:<15} {func.__doc__.strip().splitlines()[0]}" for name, func in sorted(self.commands.items()) if func.__doc__]
             help_string = header + "\n".join(summaries)
         else:
-            # ... (rest of the logic is the same)
             cmd = args[0]
             if cmd in self.commands and self.commands[cmd].__doc__:
                 docstring = self.commands[cmd].__doc__.strip()
-                # Let's make the usage syntax bold
                 lines = docstring.splitlines()
                 lines[0] = f"[bold]{lines[0]}[/bold]"
                 help_string = "\n".join(line.strip() for line in lines)
@@ -338,6 +324,7 @@ class VFSTerminalWidget(Widget):
 
 class Dustty(Executable):
     APP_NAME = "Dustty"
+    APP_ID = "terminal"
 
     @property
     def APP_ICON(self):

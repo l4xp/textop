@@ -1,9 +1,13 @@
+from lib.core.events import ActiveWindowsChanged
 from lib.display.layout import *
 from lib.display.window import Executable, Window
 from textual import log
+from textual.app import ComposeResult
 from textual.containers import Container
 from textual.reactive import reactive
+from textual.screen import Screen
 from textual.widget import Widget
+from textual.widgets import Label
 
 
 """
@@ -121,7 +125,6 @@ class WindowManager:
 
     async def close_window(self, window_to_close: "Window") -> None:
         """The authoritative method for closing a window safely."""
-        # the dummy trick should be unneccesary now, since the DescendantFocus should be the culprit for the flicker bug
         window_to_close.add_class("terminated")
         if not window_to_close.parent: return
 
@@ -134,6 +137,7 @@ class WindowManager:
             self.active_window = None
 
         await window_to_close.remove()
+        self._post_active_windows_update()
 
     def handle_window_maximized(self, window: Window) -> None:
         """Applies/removes the maximized class based on window state."""
@@ -218,10 +222,20 @@ class WindowManager:
 
     async def spawn_window(self, executable: Executable) -> None:
         """Creates a new window and adds it to the container."""
+        def _center_window(window):
+            parent_size = self.window_container.size
+            window_size = (window.init_width, window.init_height)
+            offset_x = (parent_size.width - window_size[0]) // 2
+            offset_y = (parent_size.height - window_size[1]) // 2
+            window.styles.offset = (offset_x, offset_y)
+            window.user_offset = (offset_x, offset_y)
+
         win = Window(executable)
         self._apply_styles_for_window(win)
+        _center_window(win)
         await self.window_container.mount(win)
         self.set_active_window(win)
+        self._post_active_windows_update()
 
     def focus_cycle(self, direction: int = 1) -> None:
         """Cycles the active window and focuses its content."""
@@ -254,3 +268,14 @@ class WindowManager:
 
         cycle_dir = direction_map[self.mode][direction]
         self.focus_cycle(cycle_dir)
+
+    def _post_active_windows_update(self) -> None:
+        """Helper method to calculate and post the window state."""
+        new_active_windows: dict[str, list] = {}
+        for window in self.windows:
+            app_id = window.executable.APP_ID
+            if app_id not in new_active_windows:
+                new_active_windows[app_id] = []
+            new_active_windows[app_id].append(window)
+
+        self.window_container.post_message(ActiveWindowsChanged(new_active_windows))
