@@ -65,6 +65,7 @@ MISC DONE:
 - impl. resize windows via keys
 - windows fix
 - keypress toast
+- fix focus goes to last window if taskar activewindowlist is removed
 
 CONTINUE:
 taskbar
@@ -75,6 +76,13 @@ TODO PRIO
 - vfs
 - workspace
 - user system
+- context menu
+- settings
+- games: snake, tic tac toe, sudoku
+-
+
+TOFIX
+
 
 |--------------------|
 | Settings      - + x|
@@ -100,7 +108,7 @@ from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
 from lib.core.widgets import UIToast
 from lib.debug2 import DomInfoOverlay
-from lib.display.bar import Taskbar
+from lib.display.bar import ActiveWindowList, Taskbar
 from lib.display.window import Window
 from lib.display.wm import Desktop
 from textual import log, on, timer
@@ -108,7 +116,7 @@ from textual._border import BORDER_CHARS, BORDER_LOCATIONS
 from textual.app import App, ComposeResult, Timer
 from textual.containers import Container
 from textual.css.constants import VALID_BORDER
-from textual.events import MouseMove
+from textual.events import MouseDown, MouseMove
 from textual.geometry import Offset, Region
 from textual.reactive import reactive
 from textual.widgets import Label
@@ -170,15 +178,53 @@ class TextTop(App):
         yield DomInfoOverlay(id="dom_info_overlay")
 
     def on_key(self, event):
-        # keys = [key[0] for key in self.BINDINGS]
-        # if event.key in keys:
+        # for demo / debug
         self.show_keypress(f"{event.key}")
+        # overrides default for precise control
+        if event.key == "tab":
+            self.action_focus_next_element()
+            event.stop()
+            event.prevent_default()
+        if event.key == "shift+tab":
+            self.action_focus_previous_element()
+            event.stop()
+            event.prevent_default()
+        # for taskbar
+        if event.key.startswith("alt+") and len(event.key) == 5:
+            key = event.key[-1]
+            if key.isalpha():
+                was_handled = self.query_one(Taskbar).trigger_accelerator(key)
+                if was_handled:
+                    event.prevent_default()
+                    event.stop()
+
+    def on_mouse_down(self, event: MouseDown) -> None:
+        """Called when the user clicks anywhere in the app."""
+
+        try:
+            popup = self.query_one(ActiveWindowList)
+        except Exception as e:
+            return
+        log("-----------", popup)
+        log("- r: ", popup.region)
+        log("- e: ", event.x, ",", event.y)
+        log("= ", popup.region.contains(event.screen_x, event.screen_y))
+        if not popup.region.contains(event.screen_x, event.screen_y):
+            # If the click was outside, remove the popup.
+            popup.remove()
 
     def on_mount(self) -> None:
         self.wm = self.query_one(Desktop).wm
 
     def show_keypress(self, message: str, timeout: float = 1.5):
+        def _center_toast():
+            screen_width = self.size.width
+            toast_width = self.toast.styles.width.value + len(message)
+            new_offset_x = (screen_width - toast_width) // 2
+            self.toast.styles.offset = (new_offset_x, 1)
+
         self.toast.show(message)
+        _center_toast()
 
         if self.hide_toast_timer:
             self.hide_toast_timer.stop()
@@ -222,6 +268,14 @@ class TextTop(App):
         log(f"App action: Focusing direction {direction}.")
         desktop = self.query_one(Desktop)
         desktop.wm.focus_direction(direction)
+
+    def action_focus_next_element(self) -> None:
+        """Tells the WindowManager to focus the next element in the active window."""
+        self.wm.cycle_focus_element(direction=1)
+
+    def action_focus_previous_element(self) -> None:
+        """Tells the WindowManager to focus the previous element in the active window."""
+        self.wm.cycle_focus_element(direction=-1)
 
     async def action_cycle_focus(self, direction: str):
         log(f"App action: cycling focus {'next' if direction == 1 else 'previous'}.")

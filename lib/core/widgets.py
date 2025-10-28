@@ -24,12 +24,9 @@ class UIToast(Widget):
     def compose(self) -> ComposeResult:
         yield self._label
 
-    def on_mount(self) -> None:
-        self.styles.visibility = 'hidden'
-
     def hide(self) -> None:
-        self.styles.visibility = "hidden"
+        self.remove_class("visible")
 
     def show(self, message: str, timeout=None) -> None:
         self._label.update(message)
-        self.styles.visibility = 'visible'
+        self.add_class("visible")

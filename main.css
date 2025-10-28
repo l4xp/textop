@@ -1,11 +1,11 @@
 /* Defined vars */
 $window: $surface;
 $window-active: $primary-darken-3;
-$terminal-foreground: $foreground;
-$terminal-background: $surface; /* Use $surface for a slightly different bg */
+/*$terminal-foreground: $foreground;*/
+/*$terminal-background: $surface;*/
 
 /* ANSI Normal Colors */
-$terminal-black: $background-darken-2;
+/*$terminal-black: $background-darken-2;
 $terminal-red: $error;
 $terminal-green: $success;
 $terminal-yellow: $warning;
@@ -13,16 +13,16 @@ $terminal-blue: $secondary;
 $terminal-magenta: $secondary-lighten-2;
 $terminal-cyan: $primary-lighten-2;
 $terminal-white: $foreground-lighten-2;
-
+*/
 /* ANSI Bright Colors */
-$terminal-bright-black: $foreground-muted;
+/*$terminal-bright-black: $foreground-muted;
 $terminal-bright-red: $error-lighten-1;
 $terminal-bright-green: $success-lighten-1;
 $terminal-bright-yellow: $warning-lighten-1;
 $terminal-bright-blue: $secondary-lighten-1;
 $terminal-bright-magenta: $secondary-lighten-3;
 $terminal-bright-cyan: $primary-lighten-3;
-$terminal-bright-white: $foreground-lighten-3;
+$terminal-bright-white: $foreground-lighten-3;*/
 
 Grid {
     grid-size: 3 3;
@@ -38,8 +38,7 @@ Button {
 .hidden, .minimized { display: none; }
 /* ----- App (Move as Default CSS later) ----- */
 Screen {
-    layers: desktop windows active maxed fullscreen top ui critical;
-    align: center top;
+    layers: desktop windows active maxed fullscreen top popui ui critical;
 }
 Desktop {
     layer: desktop;
@@ -137,6 +136,10 @@ Window.active #title-bar{
 /*---------------------------------------------*/
 Window #title-bar Button{
     width: 3;
+    &:focus {
+        text-style: bold;
+        background-tint: $primary;
+    }
 }
 Window #window-title {
     width: 1fr;
@@ -261,20 +264,59 @@ StartMenuScreen {
     display: none;
 }
 /* ----- Misc ----- */
-UIToast {
-    layer: critical;
-    background: $panel;
-    color: $text;
-    outline-left: $success wide;
-    padding: 0 3 0 3;
-    color: $text;
+UIToast{
+    display: none;
+
+    layer: popui;
+    position: absolute;
     height: 1;
     width: auto;
-    margin-top: 1;
+    offset-y: 1;
+    padding: 0 3 0 3;
+    color: $text;
+    background: $panel;
+    outline-left: $success wide;
+}
+UIToast.visible {
+    display: block;
 }
 Taskbar UIButton {
-    border-left: $primary tall;
+    border-left: $boost tall;
+    margin-left: 1;
 }
-Taskbar UIButton.active {
-    border-left: $success tall;
+Taskbar UIButton {
+    color: $text;
+    &:hover {
+        background: $boost;
+    }
+    &.active {
+        border-left: $success tall;
+    }
+    &:focus {
+        text-style: bold;
+        background-tint: white 30%;
+    }
+}
+ActiveWindowList {
+    layer: popui;
+    width: auto;
+    height: auto;
+    position: absolute;
+    background: $panel;
+}
+
+ActiveWindowList OptionList {
+    width: auto;
+    height: auto;
+    border: $boost outer;
+    background: $primary-background-darken-1;
+}
+ActiveWindowList OptionList  .option-list--option-highlighted {
+    background: $success;
+    color: $text;
+}
+WMLayout {
+    outline-left: $surface tall;
+    border-right: $panel-lighten-2  tall;
+    color: $primary-lighten-3;
 }

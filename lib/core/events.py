@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from lib.display.window import Executable
 from textual import log
 from textual.message import Message
 

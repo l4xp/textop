@@ -87,7 +87,6 @@ class VFSTerminalWidget(Widget):
         width: auto;
     }
     """
-
     def __init__(self, vfs_root: str = "./home", **kwargs):
         super().__init__(**kwargs)
         # --- Core Components ---

@@ -1,6 +1,6 @@
 from lib.core.events import ActiveWindowsChanged
 from lib.display.layout import *
-from lib.display.window import Executable, Window
+from lib.display.window import Executable, PriorityButton, Window
 from textual import log
 from textual.app import ComposeResult
 from textual.containers import Container
@@ -46,12 +46,12 @@ class WMLayout(Widget):
     def on_mount(self) -> None:
         """When mounted, get the initial state from the WindowManager."""
         wm = self.app.query_one(Desktop).wm
-        self.text = f"|{wm.mode}|"
+        self.text = f"  {wm.mode}  "
 
     def update_mode(self, new_mode: str) -> None:
         """A public method to directly update the layout text."""
         log(f"WMLayout received direct update: {new_mode}")
-        self.text = f"|{new_mode}|"
+        self.text = f"  {new_mode}  "
 
     def render(self) -> str:
         return self.text
@@ -63,6 +63,7 @@ class WMLayout(Widget):
 
 class WindowManager:
     """A utility to manage window layout, creation, and styling on the desktop. Should be the only class that decides who should be active. """
+
     """
     Layout Modes:
     float: no layout, let each window handle their own styles/layout, newest spawns centered
@@ -114,21 +115,18 @@ class WindowManager:
     def _get_next_window_for_focus(self, closed_window: Window) -> Window | None:
         """Helper to find the next window to focus when one is closed."""
         if self.active_window == closed_window:
-            # Get a list of windows that are NOT the one being closed.
             remaining_windows = [
-                w for w in self.window_container.query(Window) if w is not closed_window
+                w for w in self.window_container.query(Window) if w is not closed_window and not w.has_class("minimized")
             ]
             if remaining_windows:
-                # Return the last window in the list as the next focus target.
                 return remaining_windows[-1]  # this should be the last ACTIVE window in the list instead
         return None
 
     async def close_window(self, window_to_close: "Window") -> None:
         """The authoritative method for closing a window safely."""
-        window_to_close.add_class("terminated")
         if not window_to_close.parent: return
 
-        remaining_windows = [w for w in self.windows if w is not window_to_close]
+        remaining_windows = [w for w in self.windows if w is not window_to_close and not w.has_class("minimized")]
         next_focus_target = remaining_windows[-1] if remaining_windows else None
 
         if next_focus_target:
@@ -190,7 +188,7 @@ class WindowManager:
 
     def handle_window_minimized(self, window: Window) -> None:
         window.add_class("minimized")
-        remaining_windows = [w for w in self.windows if w is not window]
+        remaining_windows = [w for w in self.windows if w is not window and not w.has_class("minimized")]
         next_focus_target = remaining_windows[-1] if remaining_windows else None
         if next_focus_target:
             self.set_active_window(next_focus_target)
@@ -206,7 +204,18 @@ class WindowManager:
         window.add_class("active")
         window.remove_class("minimized")
         self.active_window = window
-        window.executable.focus_content()
+
+        focusable_elements = window.get_focusable_elements()
+        first_content_element = next(
+            (widget for widget in focusable_elements if not isinstance(widget, PriorityButton)),
+            None
+        )
+        if first_content_element:
+            first_content_element.focus()
+        elif focusable_elements:  # Fallback to first title bar button
+            focusable_elements[0].focus()
+        else:  # fallback to the window frame itself
+            window.focus()
 
     def _apply_styles_for_window(self, win: Window):
         """Applies mode-specific classes and styles to a single window."""
@@ -236,6 +245,21 @@ class WindowManager:
         await self.window_container.mount(win)
         self.set_active_window(win)
         self._post_active_windows_update()
+
+    def cycle_focus_element(self, direction: int = 1) -> None:
+        """Cycles focus between focusable ELEMENTS within the active window"""
+        if not self.active_window:
+            return
+        focusable_elements = self.active_window.get_focusable_elements()
+        if not focusable_elements:
+            return
+        currently_focused = self.window_container.app.screen.focused
+        try:
+            current_index = focusable_elements.index(currently_focused)
+        except ValueError:
+            current_index = -1
+        next_index = (current_index + direction) % len(focusable_elements)
+        focusable_elements[next_index].focus()
 
     def focus_cycle(self, direction: int = 1) -> None:
         """Cycles the active window and focuses its content."""

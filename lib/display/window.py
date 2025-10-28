@@ -76,10 +76,29 @@ class Executable(Container):
         super().__init__(**kwargs)
         self._window: Window | None = None
 
-    def focus_content(self) -> None:
-        """A helper method to focus the main content widget"""
-        if (content := self.query_one('#app-content', Widget)):
-            content.focus()
+    def focus_content(self) -> bool:
+        """A helper method to focus the main content of the main widget"""
+        try:
+            content_container = self.query_one('#app-content', Widget)
+            all_descendants = content_container.query("*")
+            focusable_descendants = [
+                widget
+                for widget in all_descendants
+                if widget.can_focus and not widget.disabled
+            ]
+            if focusable_descendants:
+                target_to_focus = focusable_descendants[-1]
+                log(f"Smart focus found target: {target_to_focus}")
+                target_to_focus.focus()
+                return True
+            else:
+                log(f"Smart focus found no descendants in {content_container}")
+                return False
+
+        except Exception as e:
+            # if #app-content doesn't exist or no focus target can be found
+            log(f"Error during smart focus: {e}")
+            return False
 
     def compose(self) -> ComposeResult:
         """
@@ -97,6 +116,7 @@ class Window(Container):
     'active' when any of its children gain focus.
     """
     window_offset = reactive((0, 0))
+    can_focus = True
 
     def __init__(self, executable: Executable, **kwargs):
         super().__init__(**kwargs)
@@ -151,12 +171,8 @@ class Window(Container):
 
     @on(DescendantFocus)
     def on_descendant_focus(self, event: DescendantFocus) -> None:
-        """Brings the window to the front when a child is focused."""
-        if self.has_class("minimized") or self.has_class("terminated"):
-            event.stop()
-            return
-        self.wm.set_active_window(self)
-        event.stop()
+        """Brings the window to the front when a child is focused (moved to mousedown)."""
+        pass
 
     def _increase_window_size(self, delta: int = 1, direction: str = "right"):
         """Increase or decrease window size in the given direction with min-size safety."""
@@ -202,9 +218,19 @@ class Window(Container):
             self.styles.height = new_h
 
     def on_key(self, event: Key) -> None:
-        # --- Handle key events ---
-        # self.notify(event.key, title="key")
-        if event.key == "alt+r":
+        if event.key == "ctrl+m":
+            self.minimize_window(Button.Pressed(Button("")))  # placeholder
+        if event.key == "ctrl+n":
+            self.toggle_maximize_window(Button.Pressed(Button("")))
+        if event.key == "ctrl+left":
+            self._move_window((int(self.styles.offset[0].value) - 1, int(self.styles.offset[1].value)))
+        if event.key == "ctrl+right":
+            self._move_window((int(self.styles.offset[0].value) + 1, int(self.styles.offset[1].value)))
+        if event.key == "ctrl+up":
+            self._move_window((int(self.styles.offset[0].value), int(self.styles.offset[1].value) - 1))
+        if event.key == "ctrl+down":
+            self._move_window((int(self.styles.offset[0].value), int(self.styles.offset[1].value) + 1))
+        if event.key == "ctrl+r":
             self.is_window_resizing = not self.is_window_resizing
             self.is_window_dragging = False
             if self.is_window_resizing:
@@ -231,15 +257,20 @@ class Window(Container):
             case "ctrl+shift+l":  # shrink from right
                 self._increase_window_size(-1, "right")
 
+    def _move_window(self, new_offset: tuple[int, int]) -> None:
+        self.user_offset = new_offset
+        self.styles.offset = new_offset
+
     def on_mouse_move(self, event: MouseMove) -> None:
         """Moves the window and record the new user offset"""
+        if self.has_class("minimized"):
+            return
         if self.is_window_dragging and not self.is_window_resizing:
             new_offset = (
                 event.screen_x - self._drag_offset[0],
                 event.screen_y - self._drag_offset[1]
             )
-            self.user_offset = new_offset
-            self.styles.offset = new_offset
+            self._move_window(new_offset)
             event.stop()
 
         elif self.is_window_resizing and self._resize_edge:
@@ -294,8 +325,12 @@ class Window(Container):
                     self.styles.offset.y.value,
                 )
                 event.stop()
-        else:
-            pass
+        elif self.region.contains(event.screen_x, event.screen_y):
+            if self.has_class("minimized"):
+                # event.stop()
+                return
+            self.wm.set_active_window(self)
+            # event.stop()
 
     @on(Leave)
     def on_mouse_leave(self, event: Leave) -> None:
@@ -364,6 +399,27 @@ class Window(Container):
         local_x = self.app.mouse_coords[0] - widget_screen_region.x
         local_y = self.app.mouse_coords[1] - widget_screen_region.y
         return (local_x, local_y)
+
+    def get_focusable_elements(self) -> list[Widget]:
+        """
+        Returns a complete, ordered list of all widgets that can be focused
+        within this window, starting with the title bar.
+        """
+        title_buttons = self.query(PriorityButton).results()
+        content_widgets = self._get_focusable_content()
+        return list(title_buttons) + content_widgets
+
+    def _get_focusable_content(self) -> list[Widget]:
+        """Helper to find all focusable widgets within the Executable."""
+        try:
+            content_container = self.executable.query_one('#app-content', Widget)
+            all_descendants = content_container.query("*")
+            return [
+                widget for widget in all_descendants
+                if widget.can_focus and not widget.disabled
+            ]
+        except Exception:
+            return []
 
     def watch_window_offset(self, old_offset: tuple[int, int], new_offset: tuple[int, int]) -> None:
         """Syncs the window's offset with its underlying executable."""
