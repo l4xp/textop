@@ -2,6 +2,7 @@ import shlex
 from typing import Optional, Tuple
 
 import lib.display.glyphs as glyphs
+from lib.decorators import classproperty
 from lib.display.window import Executable
 from lib.vfs import VFS  # Assuming your VFS class is in this file
 from rich.text import Text
@@ -162,9 +163,9 @@ class VFSTerminalWidget(Widget):
         path_label = self.current_prompt.query_one("#prompt-path", Label)
         symbol_label = self.current_prompt.query_one("#prompt-symbol", Label)
 
-        static_user = Static(user_label.renderable, id="prompt-user")
-        static_path = Static(path_label.renderable, id="prompt-path")
-        static_symbol = Static(symbol_label.renderable, id="prompt-symbol")
+        static_user = Static(user_label.content, id="prompt-user")
+        static_path = Static(path_label.content, id="prompt-path")
+        static_symbol = Static(symbol_label.content, id="prompt-symbol")
         static_command = Static(command_str, classes="prompt-command")
 
         frozen_prompt_container = Horizontal(
@@ -324,8 +325,6 @@ class VFSTerminalWidget(Widget):
 class Dustty(Executable):
     APP_NAME = "Dustty"
     APP_ID = "terminal"
-
-    @property
-    def APP_ICON(self):
-        return glyphs.icons.get("terminal", "?")
+    APP_ICON_NAME = "terminal"
+    APP_CATEGORY = "System Tools"
     MAIN_WIDGET = VFSTerminalWidget

@@ -1,5 +1,6 @@
 import lib.display.glyphs as glyphs
 from lib.display.window import Executable
+from lib.vfs import classproperty
 from textual.widgets import TextArea
 
 
@@ -7,6 +8,8 @@ class Notepad(Executable):
     """A simple text editor application."""
     APP_NAME = "Notepad"
     APP_ID = "notepad"
+    APP_ICON_NAME = "notepad"
+    APP_CATEGORY = "Accessories"
     MAIN_WIDGET = TextArea
 
     DEFAULT_CSS = """
@@ -17,6 +20,3 @@ class Notepad(Executable):
         height: 100%;
     }
     """
-
-    @property
-    def APP_ICON(self): return glyphs.icons.get("notepad", "?")

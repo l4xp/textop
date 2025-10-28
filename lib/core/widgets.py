@@ -30,3 +30,9 @@ class UIToast(Widget):
     def show(self, message: str, timeout=None) -> None:
         self._label.update(message)
         self.add_class("visible")
+
+
+class Flyout(Container):
+    """A temporary popup interface"""
+    def __init__(self):
+        super().__init__()

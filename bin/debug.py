@@ -30,5 +30,6 @@ class Debug(Executable):
     """This is the blueprint definition. It links metadata to the content widget."""
     APP_NAME = "Debug"
     APP_ID = "debug"
-    APP_ICON = " ● "
+    APP_ICON_OVERRIDE = " ● "
+    APP_CATEGORY = "Development"
     MAIN_WIDGET = DebugContent

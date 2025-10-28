@@ -6,9 +6,10 @@ from bin.debug import Debug
 from bin.notepad import Notepad
 from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
-from lib.core.widgets import UIButton
+from lib.core.widgets import Flyout, UIButton
 from lib.display.window import Window
 from lib.display.wm import Desktop, WMLayout
+from lib.vfs import VFS, AppInfo
 from textual import log, on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -67,7 +68,7 @@ class RunApp(Message):
         super().__init__()
 
 
-class ActiveWindowList(Container):
+class ActiveWindowList(Flyout):
     """A pop-up menu to display active windows."""
     def __init__(
         self,
@@ -138,7 +139,9 @@ class Taskbar(Horizontal):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="left-taskbar"):
-            yield StartButton()
+            start_button = StartButton()
+            start_button.label = self._create_accelerator_label(f"{glyphs.icons['start']} Start", "start-menu-button")
+            yield start_button
         with Horizontal(id="center-taskbar"):
             yield UIButton(
                 self._create_accelerator_label("Terminal", "btn-terminal"),
@@ -229,7 +232,7 @@ class Taskbar(Horizontal):
             button_region = event.button.region
             window_list_widget.styles.offset = (
                 button_region.x,
-                button_region.y - len(active_app_windows) - 3
+                0
             )
             self.app.screen.mount(window_list_widget)
         else:
@@ -255,20 +258,10 @@ class Clock(Widget):
         self.time = datetime.now().strftime("%I:%M %p")
 
     def render(self) -> str:
-        icon = glyphs.taskbar["clock"]
+        icon = glyphs.icons["clock"]
         text = f" {icon} {self.time} "
         self.styles.width = len(text)
         return text
-
-
-class StartButton(UIButton):
-    """A simple button that pushes the StartMenuScreen when clicked."""
-    def __init__(self):
-        super().__init__(f"{glyphs.taskbar["start"]} Start", id="start-menu-button")
-
-    @on(Button.Pressed, '#start-menu-button')
-    def on_button_press(self) -> None:
-        self.app.push_screen(StartMenuScreen())
 
 
 class PriorityOptionList(OptionList):
@@ -289,82 +282,104 @@ class PriorityOptionList(OptionList):
         event.stop()
 
 
-class StartMenuScreen(Screen):
-    """A modal screen that appears as the start menu."""
+class StartButton(UIButton):
+    """A simple button that pushes the StartMenuScreen when clicked."""
+    def __init__(self):
+        super().__init__(f" Start", id="start-menu-button")
 
-    # This screen will have a transparent background to see the app behind it.
+    @on(Button.Pressed, '#start-menu-button')
+    def on_button_press(self) -> None:
+        # let global handler handle dismissal
+        try:
+            self.app.query_one(StartMenu).remove()
+        except Exception:
+            start_menu = StartMenu(self.app.discovered_apps)
+            # button_region = self.region
+            # # start_menu.styles.offset = (
+            # #     button_region.x,
+            # #     button_region.y
+            # # )
+            self.app.screen.mount(start_menu)
+
+    def on_mouse_down(self, event):
+        event.stop()
+
+
+class StartMenu(Flyout):
+    """A floating start menu that shows applications."""
+
     DEFAULT_CSS = """
     """
 
+    def __init__(self, discovered_apps: dict[str, list[AppInfo]], **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.discovered_apps = discovered_apps
+        self.categories = sorted(self.discovered_apps.keys())
+
     def compose(self) -> ComposeResult:
         """Compose the menu with just the OptionList."""
-        menu_items = [
-            None,
-            Option(f"{glyphs.icons["terminal"]}Terminal", id="terminal"),
-            Option(f"{glyphs.icons["notepad"]}Notepad", id="notepad"),
-            Option(f"{glyphs.taskbar["debug"]}Debug", id="debug"),
-            None,
-            Option(f"{glyphs.icons["settings"]}Settings", id="settings"),
-            Option(f"{glyphs.taskbar["power"]}Shutdown", id="shutdown"),
-            None,
-        ]
+        yield OptionList(id="start-menu-list")
 
-        yield PriorityOptionList(*menu_items, id="start-menu-options")
-
-    # Still enabled if clicked anywhere on the screen
     def on_click(self, event: Click) -> None:
-        self.app.pop_screen()
-        event.stop()
+        pass
 
     def on_mount(self) -> None:
-        """Focus the OptionList when the screen is mounted."""
-        self.query_one(PriorityOptionList).focus()
+        self._show_main_menu()
+        option_list = self.query_one(OptionList)
+        option_list.highlighted = 0
+        option_list.focus()
+
+    def _show_main_menu(self) -> None:
+        option_list = self.query_one(OptionList)
+        option_list.clear_options()
+        for category in self.categories:
+            option_list.add_option(
+                Option(f" {glyphs.icons['folder']} {category}", id=f"category_{category}")
+            )
+
+        option_list.add_option(None)
+        option_list.add_option(Option(f"{glyphs.icons['settings']} Settings", id="action_settings"))
+        option_list.add_option(Option(f"{glyphs.icons['power']} Shutodwn", id="action_shutdown"))
+
+    def _show_app_category(self, category_name: str) -> None:
+        option_list = self.query_one(OptionList)
+        option_list.clear_options()
+        option_list.add_option(Option(" .. Back", id="show_main_menu"))
+        option_list.add_option(None)
+        for app in self.discovered_apps[category_name]:
+            icon_char: str
+            if app['icon_override'] is not None:
+                icon_char = app['icon_override']
+            elif app['icon_name']:
+                icon_char = glyphs.icons.get(app['icon_name'], '?')
+            else:
+                icon_char = "?"
+            option_list.add_option(
+                Option(f"{icon_char} {app['name']}", id=f"app_{app['id']}")
+            )
+        option_list.highlighted = 0
 
     def on_key(self, event: Key) -> None:
         """Also dismiss on escape key."""
-        if event.key == "escape":
-            self.app.pop_screen()
-            event.stop()
+        if event.key not in ("up", "down", "enter"):
+            self.remove()
 
-
-# alternative
-class StartMenu0(Select):
-    """A custom Start Menu widget built using Textual's Select."""
-
-    def __init__(self, **kwargs):
-        self.menu_options = [
-            ("──────────────────", "divider"),
-            (f"{glyphs.icons["terminal"]}Terminal", "terminal"),
-            (f"{glyphs.icons["notepad"]}Notepad", "notepad"),
-            (f"{glyphs.taskbar["debug"]}Debug", "debug"),
-            ("──────────────────", "divider"),
-            (f"{glyphs.icons["settings"]}Settings", "settings"),
-            (f"{glyphs.taskbar["power"]}Shutdown", "shutdown"),
-            ("──────────────────", "divider"),
-        ]
-
-        super().__init__(
-            options=self.menu_options,
-            prompt=" ⌘ Start",
-            allow_blank=True,
-            compact=True,
-            **kwargs
-        )
-
-    def on_mount(self):
-        # longest selection text
-        self.styles.width = max([len(a[0]) for a in self.menu_options])
-        log(max([len(a) for a in self.menu_options]))
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        """Called when the user selects an item from the dropdown."""
-        selected_value = event.value
-
-        self.app.notify(f"Selected: {selected_value}")
-
-        if selected_value and selected_value != "divider":
-            if selected_value == "shutdown":
-                self.app.exit("Shutdown requested by user.")
-            else:
-                pass
-        self.call_next(self.clear)
+    @on(OptionList.OptionSelected)
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = str(event.option.id)
+        if option_id.startswith("category_"):
+            category = option_id.split("_", 1)[1]
+            self._show_app_category(category)
+        elif option_id.startswith("app_"):
+            app_id = option_id.split("_", 1)[1]
+            for category_apps in self.discovered_apps.values():
+                for app in category_apps:
+                    if app['id'] == app_id:
+                        self.app.post_message(Run(app['cls']()))
+                        self.remove()
+                        return
+        elif option_id == "show_main_menu":
+            self._show_main_menu()
+        elif option_id == "action_shutdown":
+            self.app.exit("Shutodwn requsted by user.")
+            self.remove()

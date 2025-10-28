@@ -106,11 +106,12 @@ from bin.debug import Debug, DebugContent
 from bin.notepad import Notepad
 from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
-from lib.core.widgets import UIToast
+from lib.core.widgets import Flyout, UIToast
 from lib.debug2 import DomInfoOverlay
 from lib.display.bar import ActiveWindowList, Taskbar
 from lib.display.window import Window
 from lib.display.wm import Desktop
+from lib.vfs import VFS, AppInfo
 from textual import log, on, timer
 from textual._border import BORDER_CHARS, BORDER_LOCATIONS
 from textual.app import App, ComposeResult, Timer
@@ -170,6 +171,7 @@ class TextTop(App):
         super().__init__(*args, **kwargs)
         self.toast = UIToast()
         self.hide_toast_timer: Timer | None = None
+        self.discovered_apps: dict[str, list[AppInfo]] | None = None
 
     def compose(self) -> ComposeResult:
         yield self.toast
@@ -202,18 +204,16 @@ class TextTop(App):
         """Called when the user clicks anywhere in the app."""
 
         try:
-            popup = self.query_one(ActiveWindowList)
+            popups = self.query(Flyout)
         except Exception as e:
             return
-        log("-----------", popup)
-        log("- r: ", popup.region)
-        log("- e: ", event.x, ",", event.y)
-        log("= ", popup.region.contains(event.screen_x, event.screen_y))
-        if not popup.region.contains(event.screen_x, event.screen_y):
-            # If the click was outside, remove the popup.
-            popup.remove()
+        for popup in popups:
+            if not popup.region.contains(event.screen_x, event.screen_y):
+                # If the click was outside, remove the popup.
+                popup.remove()
 
     def on_mount(self) -> None:
+        self.discovered_apps = VFS.discover_apps("bin")
         self.wm = self.query_one(Desktop).wm
 
     def show_keypress(self, message: str, timeout: float = 1.5):

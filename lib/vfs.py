@@ -1,7 +1,31 @@
+import importlib
+import inspect
 import os
 import shlex
 import shutil
 from pathlib import Path
+from typing import TypedDict
+
+from lib.display.window import Executable
+from textual import log
+
+
+class AppInfo(TypedDict):
+    id: str
+    name: str
+    category: str
+    cls: type[Executable]
+    icon_name: str | None
+    icon_override: str | None
+
+
+class classproperty(property):
+    """
+    A decorator that combines @classmethod and @property.
+    Allows a method to be accessed as a property of the class.
+    """
+    def __get__(self, cls, owner):
+        return self.fget.__get__(None, owner)()
 
 
 class VFS:
@@ -34,6 +58,52 @@ class VFS:
             raise PermissionError("Access denied: path is outside sandbox.")
 
         return resolved_path
+
+    def discover_apps(self, directory: str = "bin") -> dict[str, list[AppInfo]]:
+        """
+        Scans a directory for Python files, finds subclasses of Executable,
+        and returns them grouped by category.
+        """
+        categorized_apps: dict[str, list[AppInfo]] = {}
+        base_path = Path(directory)
+
+        for file_path in base_path.rglob("*.py"):
+            if file_path.name.startswith("__"):
+                continue
+
+            module_str = ".".join(file_path.with_suffix("").parts)
+
+            try:
+                module = importlib.import_module(module_str)
+                for _, member_class in inspect.getmembers(module, inspect.isclass):
+                    if issubclass(member_class, Executable) and member_class is not Executable:
+                        def get_class_attr(attr_name: str, default_value: any) -> any:
+                            attr = getattr(member_class, attr_name, default_value)
+                            if isinstance(attr, property):
+                                log(
+                                    f"App '{member_class.APP_NAME}' uses @property for '{attr_name}'. "
+                                    f"Please use @classproperty or a static variable. "
+                                    f"Using default value '{default_value}'."
+                                )
+                                return default_value
+                            return attr
+                        # --------------------------------
+                        app_info: AppInfo = {
+                            "id": getattr(member_class, "APP_ID", "unknown_id"),
+                            "name": getattr(member_class, "APP_NAME", "Untitled App"),
+                            "category": getattr(member_class, "APP_CATEGORY", "Miscellaneous"),
+                            "cls": member_class,
+                            "icon_name": getattr(member_class, "APP_ICON_NAME", None),
+                            "icon_override": getattr(member_class, "APP_ICON_OVERRIDE", None)
+                        }
+                        category = app_info["category"]
+                        if category not in categorized_apps:
+                            categorized_apps[category] = []
+                        categorized_apps[category].append(app_info)
+            except Exception as e:
+                log(f"Could not discover apps in {file_path}: {e}")
+
+        return categorized_apps
 
     def cd(self, path: str) -> None:
         """Changes the virtual current working directory."""

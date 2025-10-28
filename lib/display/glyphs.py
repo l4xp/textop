@@ -1,5 +1,3 @@
-title_bar = {}
-taskbar = {}
 icons = {}
 
 _defaults = {}
@@ -14,16 +12,16 @@ def init(style: str = "compatible"):
                   - 'standard'
                   - 'nerdfont'
     """
-    global title_bar, taskbar, icons, _defaults
+    global icons, _defaults
 
     if style == "compatible":
-        title_bar = {
+        icons = {
+            # title bar
             "minimize": "m",
             "maximize": "M",
             "restore": "~",
-            "exit": "X"
-        }
-        taskbar = {
+            "exit": "X",
+            # taskbar
             "clock": "T",
             "start": ">",
             "workspaces": "W",
@@ -35,23 +33,22 @@ def init(style: str = "compatible"):
             "wifi": "I",
             "calendar": "D",
             "power": "\\[O]",
+            # apps
             "debug": "\\[!]",
-        }
-        icons = {
             "notepad": "\\[&]",
             "terminal": "\\[>]",
             "file_manager": "\\[.]",
-            "settings": "\\[#]"
+            "settings": "\\[#]",
+            "folder": "\\[F]"
         }
 
     elif style == "standard":
-        title_bar = {
+        icons = {
             "minimize": "–",
             "maximize": "⟎",
             "restore": "⟏",
-            "exit": "✕"
-        }
-        taskbar = {
+            "exit": "✕",
+
             "clock": "🕒",
             "start": "❖",
             "workspaces": "🧩",
@@ -63,22 +60,20 @@ def init(style: str = "compatible"):
             "wifi": "📶",
             "calendar": "📅",
             "power": "⏻",
-            "debug": "[D]",
-        }
-        icons = {
-            "notepad": "[I]",
-            "terminal": "[>]",
-            "file_manager": "[.]"
+            "debug": "\\[D]",
+
+            "notepad": "\\[I]",
+            "terminal": "\\[>]",
+            "file_manager": "\\[.]"
         }
 
     elif style == "nerdfont":
-        title_bar = {
+        icons = {
             "minimize": "󰖰",
             "maximize": "󰖯",
             "restore": "󰖲",
-            "exit": "󰖭"
-        }
-        taskbar = {
+            "exit": "󰖭",
+
             "clock": "󰥔",
             "start": "",  # 󰍲
             "workspaces": "",
@@ -91,8 +86,7 @@ def init(style: str = "compatible"):
             "calendar": "󰃭",
             "power": "⏻",
             "debug": "",
-        }
-        icons = {
+
             # 'app' icons?
             "notepad": " 󱞁 ",
             "terminal": "  ",
@@ -109,7 +103,5 @@ def init(style: str = "compatible"):
         raise ValueError(f"Unknown style: {style}")
 
     _defaults = {
-        "title_bar": title_bar,
-        "taskbar": taskbar,
         "icons": icons
     }

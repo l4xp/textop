@@ -38,7 +38,7 @@ Button {
 .hidden, .minimized { display: none; }
 /* ----- App (Move as Default CSS later) ----- */
 Screen {
-    layers: desktop windows active maxed fullscreen top popui ui critical;
+    layers: desktop windows active maxed fullscreen top flyout startmenu ui critical;
 }
 Desktop {
     layer: desktop;
@@ -59,6 +59,7 @@ Desktop {
     width: 100%;
     height: 100%;
     background: transparent;
+    overflow: hidden;
 }
 #window-container.float {
     hatch: "┼" $surface-lighten-1;
@@ -138,7 +139,7 @@ Window #title-bar Button{
     width: 3;
     &:focus {
         text-style: bold;
-        background-tint: $primary;
+        background-tint: $success 30%;
     }
 }
 Window #window-title {
@@ -213,65 +214,45 @@ Taskbar #right-taskbar{
 Clock {
 }
 WMLayout {
+    outline-left: $surface tall;
+    border-right: $panel-lighten-2  tall;
+    color: $success;
 }
 /* ----- Start Menu ----- */
-#start-menu-button {
-    border: none;
-    min-width: 0;
-    padding: 0 1;
-}
-#start-menu-button:hover {
-}
-#start-menu-options {
+StartMenu{
     dock: bottom;
-    min-width: 5;
-    height: auto;
-    max-height: 50%;
-    outline: outer $panel;
-    background: $panel;
-    padding: 0 1;
-}
-
-#start-menu-options {
-    width: 25;
-    height: auto;
-    max-height: 50%;
-    border: round $accent;
-    background: $primary-background-darken-1;
-    padding: 0 1;
-    margin: 0 0 1 0;
-}
-
-#start-menu-options .option-list--option{
-    background: transparent;
-    color: $text-muted;
-}
-#start-menu-options .option-list--option-hover {
+    margin-bottom: 1;
+    layer: flyout;
     width: auto;
-    background: $boost;
+    height: auto;
+    background: $panel;
 }
-#start-menu-options .option-list--option-highlighted{
-    background: $accent-lighten-1;
+/*TO Debug: scrollbars/layout recalculation inside categories*/
+StartMenu OptionList {
+    overflow: hidden hidden;
+    width: auto;
+    border: $boost outer;
+    background: $primary-background-darken-1;
+}
+StartMenu OptionList .option-list--option-highlighted{
+    overflow: hidden hidden;
+    background: $success;
     color: $text;
 }
-
-#start-menu-options .option-list--separator {
-    background: transparent;
-}
-
-StartMenuScreen {
-    background: transparent;
-    display: none;
+StartButton {
+    color: $text;
+    height: 1;
+    border: none;
+    padding: 0 1;
 }
 /* ----- Misc ----- */
 UIToast{
     display: none;
 
-    layer: popui;
+    layer: startmenu;
     position: absolute;
     height: 1;
     width: auto;
-    offset-y: 1;
     padding: 0 3 0 3;
     color: $text;
     background: $panel;
@@ -279,6 +260,7 @@ UIToast{
 }
 UIToast.visible {
     display: block;
+    position: absolute;
 }
 Taskbar UIButton {
     border-left: $boost tall;
@@ -294,15 +276,17 @@ Taskbar UIButton {
     }
     &:focus {
         text-style: bold;
-        background-tint: white 30%;
+        background-tint: $success 30%;
     }
 }
 ActiveWindowList {
-    layer: popui;
+    dock: bottom;
+    layer: flyout;
     width: auto;
     height: auto;
     position: absolute;
     background: $panel;
+    margin-bottom: 1;
 }
 
 ActiveWindowList OptionList {
@@ -314,9 +298,4 @@ ActiveWindowList OptionList {
 ActiveWindowList OptionList  .option-list--option-highlighted {
     background: $success;
     color: $text;
-}
-WMLayout {
-    outline-left: $surface tall;
-    border-right: $panel-lighten-2  tall;
-    color: $primary-lighten-3;
 }

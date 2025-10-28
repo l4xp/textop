@@ -32,12 +32,12 @@ class TitleBar(Horizontal):
     def compose(self) -> ComposeResult:
         """Composes the title and standard window buttons."""
         yield Static(
-            f"{self._window.executable.app_icon}{self._window.executable.app_name}",
+            f"{self._window.executable.icon}{self._window.executable.app_name}",
             id='window-title'
         )
-        yield PriorityButton(glyphs.title_bar["minimize"], id='minimize-btn', compact=True)
-        yield PriorityButton(glyphs.title_bar["maximize"], id='maximize-btn', compact=True)
-        yield PriorityButton(glyphs.title_bar["exit"], id='exit-btn', compact=True)
+        yield PriorityButton(glyphs.icons["minimize"], id='minimize-btn', compact=True)
+        yield PriorityButton(glyphs.icons["maximize"], id='maximize-btn', compact=True)
+        yield PriorityButton(glyphs.icons["exit"], id='exit-btn', compact=True)
 
     def on_mouse_down(self, event: MouseDown) -> None:
         """Initiates a window drag operation when the title bar is clicked."""
@@ -53,8 +53,21 @@ class Executable(Container):
     """
     APP_ID: str = 'base_app'
     APP_NAME: str = "Untitled App"
-    APP_ICON: str = " ~ "
+    APP_OVERRIDEE: str | None = None
+    APP_ICON_NAME: str | None = None
+    APP_ICON_OVERRIDE: str | None = None
+    APP_CATEGORY: str = "Miscellaneous"
     MAIN_WIDGET: type[Widget] | None = None
+
+    @property
+    def icon(self) -> str:
+        if self.APP_ICON_OVERRIDE is not None:
+            return self.APP_ICON_OVERRIDE
+
+        if self.APP_ICON_NAME:
+            return glyphs.icons.get(self.APP_ICON_NAME, "?")
+
+        return "?"
 
     DEFAULT_CSS = """
     Executable {
@@ -70,7 +83,7 @@ class Executable(Container):
 
     def __init__(self, **kwargs):
         self.app_name = kwargs.pop("app_name", self.APP_NAME)
-        self.app_icon = kwargs.pop("app_icon", self.APP_ICON)
+        self.app_icon_name = kwargs.pop("app_icon_name", self.APP_ICON_NAME)
 
         self._main_widget_kwargs = kwargs
         super().__init__(**kwargs)
@@ -223,9 +236,9 @@ class Window(Container):
         if event.key == "ctrl+n":
             self.toggle_maximize_window(Button.Pressed(Button("")))
         if event.key == "ctrl+left":
-            self._move_window((int(self.styles.offset[0].value) - 1, int(self.styles.offset[1].value)))
+            self._move_window((int(self.styles.offset[0].value) - 2, int(self.styles.offset[1].value)))
         if event.key == "ctrl+right":
-            self._move_window((int(self.styles.offset[0].value) + 1, int(self.styles.offset[1].value)))
+            self._move_window((int(self.styles.offset[0].value) + 2, int(self.styles.offset[1].value)))
         if event.key == "ctrl+up":
             self._move_window((int(self.styles.offset[0].value), int(self.styles.offset[1].value) - 1))
         if event.key == "ctrl+down":
@@ -241,21 +254,21 @@ class Window(Container):
 
         match event.key:
             case "ctrl+h":
-                self._increase_window_size(1, "left")
+                self._increase_window_size(2, "left")
             case "ctrl+j":
                 self._increase_window_size(1, "bottom")
             case "ctrl+k":
                 self._increase_window_size(1, "top")
             case "ctrl+l":  # grow rightward
-                self._increase_window_size(1, "right")
+                self._increase_window_size(2, "right")
             case "ctrl+shift+h":  # shrink from left
-                self._increase_window_size(-1, "left")
+                self._increase_window_size(-2, "left")
             case "ctrl+shift+j":  # shrink from bottom
                 self._increase_window_size(-1, "bottom")
             case "ctrl+shift+k":  # shrink from top
                 self._increase_window_size(-1, "top")
             case "ctrl+shift+l":  # shrink from right
-                self._increase_window_size(-1, "right")
+                self._increase_window_size(-2, "right")
 
     def _move_window(self, new_offset: tuple[int, int]) -> None:
         self.user_offset = new_offset
@@ -450,5 +463,5 @@ class Window(Container):
             self.window_offset = self.styles.offset
         self.wm.handle_window_maximized(self)
         self.is_window_maximized = not self.is_window_maximized
-        self.query_one('#maximize-btn').label = glyphs.title_bar["restore"] if self.is_window_maximized else glyphs.title_bar["maximize"]
+        self.query_one('#maximize-btn').label = glyphs.icons["restore"] if self.is_window_maximized else glyphs.icons["maximize"]
         event.stop()
