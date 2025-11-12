@@ -254,7 +254,7 @@ class VFSTerminalWidget(Widget):
         if not args:
             header = (
                 "Sandboxed Shell, v1.0\n"
-                "Type `help [bold]\\[command][/]` for more info.\n"
+                "Type `help [command]` for more info.\n"
             )
             summaries = [f"  {name:<15} {func.__doc__.strip().splitlines()[0]}" for name, func in sorted(self.commands.items()) if func.__doc__]
             help_string = header + "\n".join(summaries)

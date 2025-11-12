@@ -39,7 +39,13 @@ def init(style: str = "compatible"):
             "terminal": "\\[>]",
             "file_manager": "\\[.]",
             "settings": "\\[#]",
-            "folder": "\\[F]"
+            "folder": "\\[F]",
+            # snake
+            "block": ":",
+            "shade1": "/",
+            "shade2": "|",
+            "shade3": "\\",
+
         }
 
     elif style == "standard":
@@ -64,7 +70,11 @@ def init(style: str = "compatible"):
 
             "notepad": "\\[I]",
             "terminal": "\\[>]",
-            "file_manager": "\\[.]"
+            "file_manager": "\\[.]",
+            "block": "█",
+            "shade1": "░",
+            "shade2": "▒",
+            "shade3": "▓",
         }
 
     elif style == "nerdfont":
@@ -97,6 +107,10 @@ def init(style: str = "compatible"):
             "music": " 󰝚 ",
             "file": " 󰈔 ",
             "folder": " 󰉋 ",
+            "block": "█",
+            "shade1": "░",
+            "shade2": "▒",
+            "shade3": "▓",
         }
 
     else:

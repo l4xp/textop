@@ -66,8 +66,13 @@ MISC DONE:
 - windows fix
 - keypress toast
 - fix focus goes to last window if taskar activewindowlist is removed
+- snake
+- fix window focus and priority events
+- update startmenu
+- update layouts to work with textual v.6.5.0
 
 CONTINUE:
+fixes
 taskbar
 VFS
 
@@ -78,11 +83,12 @@ TODO PRIO
 - user system
 - context menu
 - settings
-- games: snake, tic tac toe, sudoku
--
+- games: tic tac toe, sudoku
 
 TOFIX
-
+terminal markdown
+broken layouts for wm
+window minimum dimension calculation on tiled modes
 
 |--------------------|
 | Settings      - + x|
@@ -106,9 +112,10 @@ from bin.debug import Debug, DebugContent
 from bin.notepad import Notepad
 from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
-from lib.core.widgets import Flyout, UIToast
+from lib.core.widgets import UIToast
 from lib.debug2 import DomInfoOverlay
 from lib.display.bar import ActiveWindowList, Taskbar
+from lib.display.flyout import Flyout
 from lib.display.window import Window
 from lib.display.wm import Desktop
 from lib.vfs import VFS, AppInfo
@@ -183,15 +190,6 @@ class TextTop(App):
         # for demo / debug
         self.show_keypress(f"{event.key}")
         # overrides default for precise control
-        if event.key == "tab":
-            self.action_focus_next_element()
-            event.stop()
-            event.prevent_default()
-        if event.key == "shift+tab":
-            self.action_focus_previous_element()
-            event.stop()
-            event.prevent_default()
-        # for taskbar
         if event.key.startswith("alt+") and len(event.key) == 5:
             key = event.key[-1]
             if key.isalpha():
@@ -202,15 +200,16 @@ class TextTop(App):
 
     def on_mouse_down(self, event: MouseDown) -> None:
         """Called when the user clicks anywhere in the app."""
-
         try:
-            popups = self.query(Flyout)
+            flyouts = self.query(Flyout)
         except Exception as e:
             return
-        for popup in popups:
-            if not popup.region.contains(event.screen_x, event.screen_y):
+        if not flyouts:
+            return
+        for flyout in flyouts:
+            if not flyout.region.contains(event.screen_x, event.screen_y):
                 # If the click was outside, remove the popup.
-                popup.remove()
+                self.app.call_next(self.wm.close_active_flyout)
 
     def on_mount(self) -> None:
         self.discovered_apps = VFS.discover_apps("bin")

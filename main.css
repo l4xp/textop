@@ -38,7 +38,7 @@ Button {
 .hidden, .minimized { display: none; }
 /* ----- App (Move as Default CSS later) ----- */
 Screen {
-    layers: desktop windows active maxed fullscreen top flyout startmenu ui critical;
+    layers: desktop windows maxed active fullscreen top flyout startmenu ui critical;
 }
 Desktop {
     layer: desktop;
@@ -221,7 +221,6 @@ WMLayout {
 /* ----- Start Menu ----- */
 StartMenu{
     dock: bottom;
-    margin-bottom: 1;
     layer: flyout;
     width: auto;
     height: auto;
@@ -286,7 +285,6 @@ ActiveWindowList {
     height: auto;
     position: absolute;
     background: $panel;
-    margin-bottom: 1;
 }
 
 ActiveWindowList OptionList {
@@ -298,4 +296,26 @@ ActiveWindowList OptionList {
 ActiveWindowList OptionList  .option-list--option-highlighted {
     background: $success;
     color: $text;
+}
+
+SnakeUI {
+    width: 100%;
+    height: 100%;
+}
+SnakeUI Horizontal {
+    width: 100%;
+    height: 1;
+}
+SnakeUI Label {
+    width: 1fr;
+    height: 1;
+}
+SnakeGame {
+    width: 1fr;
+    height: 1fr;
+    hatch: "┼" $surface-lighten-1;
+}
+SnakeUI Footer{
+    height: 1;
+    width: 1fr;
 }

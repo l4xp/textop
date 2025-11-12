@@ -1,9 +1,11 @@
 from lib.core.events import ActiveWindowsChanged
+from lib.display.flyout import Flyout
 from lib.display.layout import *
 from lib.display.window import Executable, PriorityButton, Window
 from textual import log
 from textual.app import ComposeResult
 from textual.containers import Container
+from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widget import Widget
@@ -11,17 +13,29 @@ from textual.widgets import Label
 
 
 """
-Alt tab - temp view of instance
 
-+-----------------------------+
-|                             |
-|          +---- x +          |
-|          |       |          |
-|          +-------+          |
-|                             |
-+-----------------------------+
+Focus steps
+- window exit button closed
+- stop events from bubbling
+- call wm close_window(pass self as window)
+- wm gets active windows
+- if there is focus the last window
+> > textual focus goes to that window
+- if there is none: set focus to none
+- await remove window
+> > textual focus goes to to that window
+
+- flyout to be closed
+- stop events from bubbling
+- call wm close_flyout(pass self as flyout)
+- wm gets active windows
+- if there is focus that window
+> > textual focus goes to that last window
+- if there is none: set focus to none
+- await remove flyout
+> > textual focus goes to that window
+
 """
-
 
 class Desktop(Container):
     """
@@ -100,8 +114,9 @@ class WindowManager:
         self.window_container = Container(id="window-container")
         self._desktop_layer = desktop_layer
         self.mode = mode
-        self.modes = ["float", "vstack", "hstack", "bspV", 'ultraT']
+        self.modes = ["float", "vstack", "bsp_alt", "bsp", 'ultra_wide', 'ultra_tall']
         self.active_window: Window | None = None
+        self.active_flyout: Flyout | None = None
 
     async def on_mount(self):
         await self._desktop_layer.mount(self.window_container)
@@ -122,12 +137,14 @@ class WindowManager:
                 return remaining_windows[-1]  # this should be the last ACTIVE window in the list instead
         return None
 
-    async def close_window(self, window_to_close: "Window") -> None:
+    async def close_window(self, window_to_close: Window) -> None:
         """The authoritative method for closing a window safely."""
         if not window_to_close.parent: return
 
         remaining_windows = [w for w in self.windows if w is not window_to_close and not w.has_class("minimized")]
         next_focus_target = remaining_windows[-1] if remaining_windows else None
+
+        self.window_container.screen.set_focus(None)
 
         if next_focus_target:
             self.set_active_window(next_focus_target)
@@ -136,6 +153,29 @@ class WindowManager:
 
         await window_to_close.remove()
         self._post_active_windows_update()
+
+    async def request_flyout(self, new_flyout: Flyout) -> None:
+        """
+        Handles a request to show a flyout, ensures only one is active at a time.
+        """
+        if self.active_flyout is not None:
+            is_toggling_same_flyout = (self.active_flyout.id == new_flyout.id)
+            await self.close_active_flyout()
+
+            if is_toggling_same_flyout:
+                return
+
+        self.active_flyout = new_flyout
+        await self._desktop_layer.mount(self.active_flyout)
+        self.active_flyout.focus()
+
+    async def close_active_flyout(self):
+        flyouts = self._desktop_layer.app.query(Flyout)
+        if not flyouts:
+            return
+        self.window_container.screen.set_focus(None)
+        await flyouts.remove()
+        self.active_flyout = None
 
     def handle_window_maximized(self, window: Window) -> None:
         """Applies/removes the maximized class based on window state."""
@@ -161,12 +201,12 @@ class WindowManager:
 
         layout_map = {
             'float': None,
-            'vstack': TiledVerticalLayout(),
-            'hstack': TiledHorizontalLayout(),
-            # 'cascade': CascadeLayout(),
-            # 'bspL': BSPLargestLayout(),
-            'bspV': VerticalBSPSpiralLayout(),
-            'ultraT': UltratallLayout(),
+            'vstack': VerticalStackLayout(),
+            'hstack': HorizontalStackLayout(),
+            'bsp': BSPLayout(),
+            'bsp_alt': BSPAltLayout(),
+            'ultra_wide': UltrawideLayout(),
+            'ultra_tall': UltratallLayout(),
         }
 
         self.window_container.styles.layout = layout_map.get(self.mode)
@@ -197,25 +237,17 @@ class WindowManager:
 
     def set_active_window(self, window: "Window") -> None:
         """Sets the active window, applies CSS, and focuses its content."""
-        if self.active_window is window: return
+        if self.active_window is window:
+            # window.executable.focus_content()
+            return
+
         if self.active_window:
             self.active_window.remove_class("active")
 
         window.add_class("active")
         window.remove_class("minimized")
         self.active_window = window
-
-        focusable_elements = window.get_focusable_elements()
-        first_content_element = next(
-            (widget for widget in focusable_elements if not isinstance(widget, PriorityButton)),
-            None
-        )
-        if first_content_element:
-            first_content_element.focus()
-        elif focusable_elements:  # Fallback to first title bar button
-            focusable_elements[0].focus()
-        else:  # fallback to the window frame itself
-            window.focus()
+        window.executable.focus_content()
 
     def _apply_styles_for_window(self, win: Window):
         """Applies mode-specific classes and styles to a single window."""

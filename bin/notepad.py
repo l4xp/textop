@@ -1,7 +1,13 @@
 import lib.display.glyphs as glyphs
 from lib.display.window import Executable
 from lib.vfs import classproperty
+from textual.widget import Widget
 from textual.widgets import TextArea
+
+
+class Note(Widget):
+    def compose(self):
+        yield TextArea(id="app-content")
 
 
 class Notepad(Executable):
@@ -10,11 +16,10 @@ class Notepad(Executable):
     APP_ID = "notepad"
     APP_ICON_NAME = "notepad"
     APP_CATEGORY = "Accessories"
-    MAIN_WIDGET = TextArea
+    MAIN_WIDGET = Note
 
     DEFAULT_CSS = """
     #app-content {
-        hatch: horizontal $panel;
         border: none;
         width: 100%;
         height: 100%;

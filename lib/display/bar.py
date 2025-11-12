@@ -6,7 +6,8 @@ from bin.debug import Debug
 from bin.notepad import Notepad
 from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
-from lib.core.widgets import Flyout, UIButton
+from lib.core.widgets import UIButton
+from lib.display.flyout import Flyout
 from lib.display.window import Window
 from lib.display.wm import Desktop, WMLayout
 from lib.vfs import VFS, AppInfo
@@ -61,13 +62,6 @@ Left Click > open | minimize | maximize
 """
 
 
-# # Define a custom message to run an application
-class RunApp(Message):
-    def __init__(self, app_id: str):
-        self.app_id = app_id
-        super().__init__()
-
-
 class ActiveWindowList(Flyout):
     """A pop-up menu to display active windows."""
     def __init__(
@@ -93,11 +87,12 @@ class ActiveWindowList(Flyout):
         yield OptionList(*options, id="active-windows-list")
 
     def on_key(self, event: Key):
-        if event.key not in ("up", "down", "enter"):
-            self.remove()
+        if event.key in ("escape"):
+            self.app.call_next(self.wm.close_active_flyout)
 
     def on_mount(self) -> None:
         """Focus the list and highlight the active window."""
+        self.wm = self.app.query_one("#desktop", Desktop).wm
         option_list = self.query_one(OptionList)
         if self.active_window:
             try:
@@ -122,11 +117,9 @@ class ActiveWindowList(Flyout):
         else:
             for window in self.windows:
                 if window.uuid == option_id:
-                    desktop = self.app.query_one("Desktop", Desktop)
-                    desktop.wm.set_active_window(window)
-                    self.active_window = window
+                    self.wm.set_active_window(window)
                     break
-        self.remove()
+        self.app.call_next(self.wm.close_active_flyout)
 
 
 class Taskbar(Horizontal):
@@ -136,6 +129,9 @@ class Taskbar(Horizontal):
         self.active_windows: dict[str, list] = {}
         self._used_accelerators: set[str] = set()
         self._accelerator_map: dict[str, str] = {}
+
+    def on_mount(self, event):
+        self.wm = self.app.query_one("#desktop", Desktop).wm
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="left-taskbar"):
@@ -158,6 +154,10 @@ class Taskbar(Horizontal):
             yield WMLayout()
             yield Clock()
 
+    def on_key(self, event):
+        if event.key in ["left", "right", "enter"]:
+            event.stop()
+
     def on_mouse_down(self, event):
         event.stop()
 
@@ -165,7 +165,9 @@ class Taskbar(Horizontal):
         """Updates the taskbar state and button appearance."""
         log(f"Taskbar received new window state: {message.active_windows}")
         # close existing activewindowlist
-        self.app.query(ActiveWindowList).remove()
+        awl = self.app.query(ActiveWindowList)
+        for aw in awl:
+            self.app.call_next(self.wm.close_active_flyout)
         self.active_windows = message.active_windows
 
         for button in self.query("UIButton"):
@@ -209,21 +211,13 @@ class Taskbar(Horizontal):
         if not (button_id and button_id.startswith("btn-")):
             return
 
-        try:
-            existing_list = self.app.query_one(ActiveWindowList)
-            existing_list.remove()
-            if existing_list.owner_id == button_id:
-                return
-        except Exception:
-            pass
-
         app_id = button_id.replace("btn-", "")
         active_app_windows = self.active_windows.get(app_id)
 
         if active_app_windows:
-            wm = self.app.query_one(Desktop).wm
-            active_window = wm.active_window
+            active_window = self.wm.active_window
             window_list_widget = ActiveWindowList(
+                id=str(app_id),
                 owner_id=button_id,
                 app_id=app_id,
                 windows=active_app_windows,
@@ -234,7 +228,7 @@ class Taskbar(Horizontal):
                 button_region.x,
                 0
             )
-            self.app.screen.mount(window_list_widget)
+            self.app.call_next(self.wm.request_flyout, window_list_widget)
         else:
             if app_id == "notepad":
                 self.post_message(Run(Notepad()))
@@ -275,7 +269,7 @@ class PriorityOptionList(OptionList):
         option_id = event.option.id
 
         if option_id:
-            self.app.post_message(RunApp(option_id))
+            self.app.post_message(Run(option_id))
 
         self.app.pop_screen()
 
@@ -287,19 +281,18 @@ class StartButton(UIButton):
     def __init__(self):
         super().__init__(f" Start", id="start-menu-button")
 
+    def on_mount(self):
+        self.wm = self.app.query_one("#desktop", Desktop).wm
+
     @on(Button.Pressed, '#start-menu-button')
     def on_button_press(self) -> None:
-        # let global handler handle dismissal
-        try:
-            self.app.query_one(StartMenu).remove()
-        except Exception:
-            start_menu = StartMenu(self.app.discovered_apps)
-            # button_region = self.region
-            # # start_menu.styles.offset = (
-            # #     button_region.x,
-            # #     button_region.y
-            # # )
-            self.app.screen.mount(start_menu)
+        start_menu = StartMenu(self.app.discovered_apps, id="start-menu")
+        # button_region = self.region
+        # # start_menu.styles.offset = (
+        # #     button_region.x,
+        # #     button_region.y
+        # # )
+        self.app.call_next(self.wm.request_flyout, start_menu)
 
     def on_mouse_down(self, event):
         event.stop()
@@ -320,10 +313,8 @@ class StartMenu(Flyout):
         """Compose the menu with just the OptionList."""
         yield OptionList(id="start-menu-list")
 
-    def on_click(self, event: Click) -> None:
-        pass
-
     def on_mount(self) -> None:
+        self.wm = self.app.query_one("#desktop", Desktop).wm
         self._show_main_menu()
         option_list = self.query_one(OptionList)
         option_list.highlighted = 0
@@ -361,8 +352,8 @@ class StartMenu(Flyout):
 
     def on_key(self, event: Key) -> None:
         """Also dismiss on escape key."""
-        if event.key not in ("up", "down", "enter"):
-            self.remove()
+        if event.key in ("escape"):
+            self.app.call_next(self.wm.close_active_flyout)
 
     @on(OptionList.OptionSelected)
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -376,10 +367,10 @@ class StartMenu(Flyout):
                 for app in category_apps:
                     if app['id'] == app_id:
                         self.app.post_message(Run(app['cls']()))
-                        self.remove()
+                        self.app.call_next(self.wm.close_active_flyout)
                         return
         elif option_id == "show_main_menu":
             self._show_main_menu()
         elif option_id == "action_shutdown":
+            self.app.call_next(self.wm.close_active_flyout)
             self.app.exit("Shutodwn requsted by user.")
-            self.remove()

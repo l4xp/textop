@@ -16,7 +16,10 @@ from textual.widgets import Button, Label, Static
 
 
 class PriorityButton(UIButton):
-    """A button that stops MouseDown events from bubbling to its parent."""
+    """Stops events from bubbling."""
+    def on_focus(self, event) -> None:
+        event.stop()
+
     def on_mouse_down(self, event: MouseDown) -> None:
         event.stop()
 
@@ -41,6 +44,7 @@ class TitleBar(Horizontal):
 
     def on_mouse_down(self, event: MouseDown) -> None:
         """Initiates a window drag operation when the title bar is clicked."""
+        self._window.wm.set_active_window(self._window)
         if self._window.wm.mode == 'float':  # to refactor: move wm logic to wm
             self._window.start_drag(event)
             # event.stop()
@@ -106,6 +110,7 @@ class Executable(Container):
                 return True
             else:
                 log(f"Smart focus found no descendants in {content_container}")
+                self._window.focus()
                 return False
 
         except Exception as e:
@@ -185,7 +190,12 @@ class Window(Container):
     @on(DescendantFocus)
     def on_descendant_focus(self, event: DescendantFocus) -> None:
         """Brings the window to the front when a child is focused (moved to mousedown)."""
-        pass
+        if self.has_class("minimized"):
+            # event.stop()
+            return
+        if self.is_window_resizing:
+            return
+        self.wm.set_active_window(self)
 
     def _increase_window_size(self, delta: int = 1, direction: str = "right"):
         """Increase or decrease window size in the given direction with min-size safety."""
@@ -338,11 +348,6 @@ class Window(Container):
                     self.styles.offset.y.value,
                 )
                 event.stop()
-        elif self.region.contains(event.screen_x, event.screen_y):
-            if self.has_class("minimized"):
-                # event.stop()
-                return
-            self.wm.set_active_window(self)
             # event.stop()
 
     @on(Leave)
