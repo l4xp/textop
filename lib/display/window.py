@@ -167,9 +167,9 @@ class Window(Container):
         # Support
         self.multiple_instance: bool = True
 
-    # ┌───────────────────────────────────────────────────────────────────────┐
-    # │ Lifecycle & Compose Methods                                           │
-    # └───────────────────────────────────────────────────────────────────────┘
+    # ─────────────────────────────────────────────────────────────────────────
+    # Lifecycle & Compose Methods
+    # ─────────────────────────────────────────────────────────────────────────
 
     def on_mount(self) -> None:
         """Get a reference to the WindowManager and set initial offset."""
@@ -183,9 +183,9 @@ class Window(Container):
             yield TitleBar(self)
         yield self.executable
 
-    # ┌───────────────────────────────────────────────────────────────────────┐
-    # │ Event Handlers                                                        │
-    # └───────────────────────────────────────────────────────────────────────┘
+    # ─────────────────────────────────────────────────────────────────────────
+    # Event Handlers
+    # ─────────────────────────────────────────────────────────────────────────
 
     @on(DescendantFocus)
     def on_descendant_focus(self, event: DescendantFocus) -> None:
@@ -355,9 +355,9 @@ class Window(Container):
         self._clear_edge_hover_state()
         self._last_hover_state = None
 
-    # ┌───────────────────────────────────────────────────────────────────────┐
-    # │ Drag & Resize Logic                                                   │
-    # └───────────────────────────────────────────────────────────────────────┘
+    # ─────────────────────────────────────────────────────────────────────────
+    # Drag & Resize Logic
+    # ─────────────────────────────────────────────────────────────────────────
     def start_drag(self, event: MouseDown) -> None:
         """Initiates a drag operation for the window."""
         if self.is_window_resizing:
@@ -401,9 +401,9 @@ class Window(Container):
             if on_right:
                 self.add_class("edge-hover-right")
 
-    # ┌───────────────────────────────────────────────────────────────────────┐
-    # │ Watchers & Helpers                                                    │
-    # └───────────────────────────────────────────────────────────────────────┘
+    # ─────────────────────────────────────────────────────────────────────────
+    # Watchers & Helpers
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _get_absolute_local_coords(self) -> tuple[int, int]:
         widget_screen_offset = self.screen.get_offset(self)
@@ -444,9 +444,9 @@ class Window(Container):
         if hasattr(self.executable, 'window_offset'):
             self.executable.window_offset = new_offset
 
-    # ┌───────────────────────────────────────────────────────────────────────┐
-    # │ Window Controls                                                       │
-    # └───────────────────────────────────────────────────────────────────────┘
+    # ─────────────────────────────────────────────────────────────────────────
+    # Window Controls
+    # ─────────────────────────────────────────────────────────────────────────
 
     @on(Button.Pressed, "#exit-btn")
     def close_window(self, event: Button.Pressed) -> None:

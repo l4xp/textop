@@ -211,7 +211,7 @@ Taskbar #center-taskbar{
 Taskbar #right-taskbar{
     align-horizontal: right;
 }
-Clock {
+Taskbar Clock {
 }
 WMLayout {
     outline-left: $surface tall;

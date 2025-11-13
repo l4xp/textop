@@ -1,7 +1,7 @@
 """
-textop v0.3
+textop v0.5
 A desktop environment simulator on terminal
-Built with Textual v3.7.0
+Built with Textual v6.5.0
 
 This application simulates a graphical user interface within the terminal, featuring:
 - A window manager with floating and tiling modes.
@@ -11,44 +11,45 @@ This application simulates a graphical user interface within the terminal, featu
 
 Project Roadmap:
 -----------------
-Core Features:
-  - [x] Dynamic Layouts (float, vstack, hstack, uwide, bsp)
-  - [x] Basic Window Management (open, minimize, maximize, close, move, resize, layout)
-  - [x] Core apps & Executables(notepad, calculator, terminal, browser, media viewer, browser)
-  - [x] Status bar
-  - [ ] Installer/setup mode for initial configuration.
-  - [ ] Simulated filesystem and OS folder structure (bin, home, etc.).
-
-Display & UI:
-  - [X] Implement layering for windows properly.
-  - [?] Custom expandable widgets (e.g., for menus).
-  - [ ] Desktop icons for applications.
-  - [ ] Animations?
+General System & Display:
+  - [~] Windows z-levels (layers)
+  - [X] Popup/expandable mini windows (flyouts system)
+  - [~] Desktop icons for applications (glyphs system)
+  - [ ] Installer/setup mode for initial configuration
+  - [ ] Animations? (heavy)
+  - [~] Simulated filesystem and OS folder structure (bin, home, etc.) (vfs)
 
 Window Management:
-  - [ ] Workspaces / multiple desktops.
-  - [X] App switcher (Alt+Tab functionality).
-  - [X] Window states
-  - [ ] Workspaces
+  - [ ] Workspaces / multiple desktops
+  - [x] Window Basics (open, minimize, maximize, close, move, resize)
+  - [X] App switcher (Alt+Tab / activewindowlist)
+  - [X] Window states (runtime)
+  - [ ] Window states (memory)
+  - [x] Dynamic Layouts (float, vstack, hstack, uwide, utall, bsp, bsp_alt)
 
-Desktop Features:
-  - [X] Notification/toast system.
-  - [ ] Start menu populated from an application directory.
-  - [ ] Search functionality.
-  - [ ] Advanced applications: File Manager, Image Viewer, Music Player.
-  - [ ] Screenshot (copy a selection to clipboard)
+Desktop:
+  - [X] Notification/toast system
+  - [ ] State persistence (snapshots)
+  - [ ] User system (login/logout/switch/create/delete)
+  - [ ] Security (privileges, passwords, encrypt, decrypt system, hide/show)
 
-Taskbar Features:
-  - [ ] Taskbar widgets (battery, volume, etc.).
-  - [ ] Active Window feedback + switcher
+Status Bar:
+  - [x] Launchers (terminal, notepad, debug)
+  - [ ] Dynamic launcher pinning
+  - [X] Taskbar widgets (battery, volume, etc.)
+  - [X] Active Window feedback + switcher
+  - [X] Start menu populated from an application directory
+  - [~] Start Menu
+  - [ ] Search functionality
+
+Apps:
+  - [x] notepad, terminal, snake game
+  - [ ] calculator, browser, media viewer/player, file manager, settings
 
 QOL:
-  - [ ] yaml/toml config for taskabr
-  - [ ] Somehow safely expose non-crucial desktop css for users / not?
-  - [ ] json for state persistence??
-  - [X] glyphs module for centralized font shennanigans
-  - [ ] mod + drag to move windows
-  - [ ] css var with classes for dynamically styling borders (ascii,panel,full)
+  - [ ] Screenshot (copy a selection to clipboard)
+  - [ ] Module-specific configs (taskbar, windows, wm)
+  - [ ] CSS override configs (taskbar, windows, wm, desktop)
 
 
 MISC DONE:
@@ -70,25 +71,27 @@ MISC DONE:
 - fix window focus and priority events
 - update startmenu
 - update layouts to work with textual v.6.5.0
+- fix vstack, hstack distribute dimensions evenly
+- feat: wm: tiling swap windows, focus windows upgrade, code cleanup
+- change: log to lib/display/console.py instead of textual console
+- change: custom layouts & their children are now neighbor-aware
 
 CONTINUE:
-fixes
 taskbar
 VFS
 
-TODO PRIO
+TODO PRIORITY
 - taskbar
 - vfs
 - workspace
 - user system
 - context menu
 - settings
-- games: tic tac toe, sudoku
+- readme
 
 TOFIX
 terminal markdown
-broken layouts for wm
-window minimum dimension calculation on tiled modes
+might refactor wm to use move_child as well for z-axis ordering
 
 |--------------------|
 | Settings      - + x|
@@ -115,6 +118,7 @@ from lib.core.events import ActiveWindowsChanged, Run
 from lib.core.widgets import UIToast
 from lib.debug2 import DomInfoOverlay
 from lib.display.bar import ActiveWindowList, Taskbar
+from lib.display.console import redirect_stdout
 from lib.display.flyout import Flyout
 from lib.display.window import Window
 from lib.display.wm import Desktop
@@ -129,9 +133,9 @@ from textual.geometry import Offset, Region
 from textual.reactive import reactive
 from textual.widgets import Label
 
-# =============================================================================
-# Textual Patch
-# =============================================================================
+# ─────────────────────────────────────────────────────────────────────────────
+#  Textual Patch
+# ─────────────────────────────────────────────────────────────────────────────
 BorderCharsType = Tuple[Tuple[str, str, str], Tuple[str, str, str], Tuple[str, str, str]]
 BorderLocationsType = Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]
 
@@ -149,9 +153,11 @@ FULL_BORDER_LOCATIONS: Dict[str, BorderLocationsType] = {
 cast(Dict[str, BorderCharsType], BORDER_CHARS).update(FULL_BORDER)
 cast(Dict[str, BorderLocationsType], BORDER_LOCATIONS).update(FULL_BORDER_LOCATIONS)
 cast(Set[str], VALID_BORDER).update(FULL_BORDER.keys())
-# =============================================================================
-# Main Application
-# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Main Application
+# ─────────────────────────────────────────────────────────────────────────────
 class TextTop(App):
     """
     This class orchestrates the entire desktop environment, including the
@@ -163,8 +169,12 @@ class TextTop(App):
         ("alt+shift+tab", "cycle_focus('-1')", "Cycle Window Focus Down"),
         ("alt+j", "focus_direction('down')", "Focus Down"),
         ("alt+k", "focus_direction('up')", "Focus Up"),
+        ("alt+shift+j", "move_window_direction('down')", "Move Down"),
+        ("alt+shift+k", "move_window_direction('up')", "Move Up"),
         ("alt+h", "focus_direction('left')", "Focus Left"),
         ("alt+l", "focus_direction('right')", "Focus Right"),
+        ("alt+shift+h", "move_window_direction('left')", "Move Left"),
+        ("alt+shift+l", "move_window_direction('right')", "Move Right"),
         ("alt+c", "cycle_window_mode", "Cycle Layout"),
         ("alt+enter", "sys_run('Terminal')", "Open Terminal"),
         ("alt+n", "sys_run('Notepad')", "Open Notepad"),
@@ -214,6 +224,7 @@ class TextTop(App):
     def on_mount(self) -> None:
         self.discovered_apps = VFS.discover_apps("bin")
         self.wm = self.query_one(Desktop).wm
+        redirect_stdout()  # console log
 
     def show_keypress(self, message: str, timeout: float = 1.5):
         def _center_toast():
@@ -237,7 +248,7 @@ class TextTop(App):
     @on(Run)
     async def on_run(self, message: Run) -> None:
         """Handles Run messages and spawn new application windows."""
-        log(f"App received Run message for {message.executable.app_name}")
+        print(f"App received Run message for {message.executable.app_name}")
         desktop = self.query_one(Desktop)
         await desktop.wm.spawn_window(message.executable)
 
@@ -250,23 +261,26 @@ class TextTop(App):
 
     def action_sys_kill(self, window: None | Window = None):
         """Kills the specified | active window."""
-        log(f"Attempt: kill {window}.")
+        print(f"Attempt: kill {window}.")
         target_window = self.wm.active_window if window is None else window
         if target_window:
             self.call_next(self.wm.close_window, target_window)
         else:
-            log("sys_kill failed: No active window to kill.")
+            print("sys_kill failed: No active window to kill.")
 
     async def action_cycle_window_mode(self) -> None:
         """Cycles through the available window layout modes."""
-        log("App action: Cycling window mode.")
+        print("App action: Cycling window mode.")
         self.wm.change_mode()
 
     def action_focus_direction(self, direction: str) -> None:
         """Moves focus in a specific direction in tiling modes."""
-        log(f"App action: Focusing direction {direction}.")
-        desktop = self.query_one(Desktop)
-        desktop.wm.focus_direction(direction)
+        print(f"App action: Focusing direction {direction}.")
+        self.wm.focus_direction(direction)
+
+    def action_move_window_direction(self, direction: str) -> None:
+        print(f"App action: Moving direction {direction}.")
+        self.wm.move_window_direction(direction)
 
     def action_focus_next_element(self) -> None:
         """Tells the WindowManager to focus the next element in the active window."""
@@ -277,7 +291,7 @@ class TextTop(App):
         self.wm.cycle_focus_element(direction=-1)
 
     async def action_cycle_focus(self, direction: str):
-        log(f"App action: cycling focus {'next' if direction == 1 else 'previous'}.")
+        print(f"App action: cycling focus {'next' if direction == 1 else 'previous'}.")
         self.wm.focus_cycle(int(direction))
 
     def action_pause_dom_inspector(self) -> None:

@@ -12,31 +12,6 @@ from textual.widget import Widget
 from textual.widgets import Label
 
 
-"""
-
-Focus steps
-- window exit button closed
-- stop events from bubbling
-- call wm close_window(pass self as window)
-- wm gets active windows
-- if there is focus the last window
-> > textual focus goes to that window
-- if there is none: set focus to none
-- await remove window
-> > textual focus goes to to that window
-
-- flyout to be closed
-- stop events from bubbling
-- call wm close_flyout(pass self as flyout)
-- wm gets active windows
-- if there is focus that window
-> > textual focus goes to that last window
-- if there is none: set focus to none
-- await remove flyout
-> > textual focus goes to that window
-
-"""
-
 class Desktop(Container):
     """
     The main workspace container for the user.
@@ -64,7 +39,7 @@ class WMLayout(Widget):
 
     def update_mode(self, new_mode: str) -> None:
         """A public method to directly update the layout text."""
-        log(f"WMLayout received direct update: {new_mode}")
+        print(f"WMLayout received direct update: {new_mode}")
         self.text = f"  {new_mode}  "
 
     def render(self) -> str:
@@ -76,45 +51,15 @@ class WMLayout(Widget):
 
 
 class WindowManager:
-    """A utility to manage window layout, creation, and styling on the desktop. Should be the only class that decides who should be active. """
-
     """
-    Layout Modes:
-    float: no layout, let each window handle their own styles/layout, newest spawns centered
-        - draggin enabled
-        - change focus with alt+tab
-        - saves window offset
-    vstack: arrange children stacked vertically, newest spawns below
-        - no dragging
-        - change focus with j, k
-    hstack: arrange children stacked horizontally, newest spawns to the right
-        - no dragging
-        - change focus with h, l
-    cascade: arrange children overlayed, offset 2 to the right and 1 below, newest spawn center layered
-        - no dragging ?
-        - change focus with alt+tab
-        - active window retain previous inactive window position
-        - move window to previous layout chiildren index when active >> inactive
-    traditional cascade + float (unimplemented)
-        - dragging enabled
-        - change focus with alt+tab
-        - spawn offset * active_windows length
-        - let windows handle styles afterward
-    ultra-wide stack:
-        - no dragging
-        - change mode with h, j, k, l
-        - spawn: 1) center-maximized, 2) horizontal-split, 3) %width: 25% left | 50% center | 25% right, 4..n) 25% left | 50% center | 25% vertical-stack-split right
-    bsp:
-        - recursive horizontal / vertical split of last child layout
-        - no dragging
-        - change focus with h, j, k, l
+    A utility to manage window layout, creation, and styling on the desktop.
     """
     def __init__(self, desktop_layer: Desktop, mode: str = 'float'):
         # mounts a single dynamically set container
         self.window_container = Container(id="window-container")
         self._desktop_layer = desktop_layer
         self.mode = mode
-        self.modes = ["float", "vstack", "bsp_alt", "bsp", 'ultra_wide', 'ultra_tall']
+        self.modes = ["float", "vstack", "hstack", "bsp", "bsp_alt", "ultra_wide", "ultra_tall"]
         self.active_window: Window | None = None
         self.active_flyout: Flyout | None = None
 
@@ -122,20 +67,31 @@ class WindowManager:
         await self._desktop_layer.mount(self.window_container)
         self.change_mode(self.mode, initial=True)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Window Management
+    # ─────────────────────────────────────────────────────────────────────────
+
     @property
     def windows(self) -> list[Window]:
         """Returns a list of all managed Window instances."""
         return [child for child in self.window_container.children if isinstance(child, Window)]
 
-    def _get_next_window_for_focus(self, closed_window: Window) -> Window | None:
-        """Helper to find the next window to focus when one is closed."""
-        if self.active_window == closed_window:
-            remaining_windows = [
-                w for w in self.window_container.query(Window) if w is not closed_window and not w.has_class("minimized")
-            ]
-            if remaining_windows:
-                return remaining_windows[-1]  # this should be the last ACTIVE window in the list instead
-        return None
+    async def spawn_window(self, executable: Executable) -> None:
+        """Creates a new window and adds it to the container."""
+        def _center_window(window):
+            parent_size = self.window_container.size
+            window_size = (window.init_width, window.init_height)
+            offset_x = (parent_size.width - window_size[0]) // 2
+            offset_y = (parent_size.height - window_size[1]) // 2
+            window.styles.offset = (offset_x, offset_y)
+            window.user_offset = (offset_x, offset_y)
+
+        win = Window(executable)
+        self._apply_styles_for_window(win)
+        _center_window(win)
+        await self.window_container.mount(win)
+        self.set_active_window(win)
+        self._post_active_windows_update()
 
     async def close_window(self, window_to_close: Window) -> None:
         """The authoritative method for closing a window safely."""
@@ -154,29 +110,6 @@ class WindowManager:
         await window_to_close.remove()
         self._post_active_windows_update()
 
-    async def request_flyout(self, new_flyout: Flyout) -> None:
-        """
-        Handles a request to show a flyout, ensures only one is active at a time.
-        """
-        if self.active_flyout is not None:
-            is_toggling_same_flyout = (self.active_flyout.id == new_flyout.id)
-            await self.close_active_flyout()
-
-            if is_toggling_same_flyout:
-                return
-
-        self.active_flyout = new_flyout
-        await self._desktop_layer.mount(self.active_flyout)
-        self.active_flyout.focus()
-
-    async def close_active_flyout(self):
-        flyouts = self._desktop_layer.app.query(Flyout)
-        if not flyouts:
-            return
-        self.window_container.screen.set_focus(None)
-        await flyouts.remove()
-        self.active_flyout = None
-
     def handle_window_maximized(self, window: Window) -> None:
         """Applies/removes the maximized class based on window state."""
         # if already maximized
@@ -190,41 +123,6 @@ class WindowManager:
             window.styles.width = None
             window.styles.height = None
             window.styles.offset = None
-
-    def change_mode(self, mode: str | None = None, initial: bool = False) -> None:
-        """Changes the layout mode by setting the style on window container."""
-        # default
-        if not initial:
-            self.mode = self.modes[(self.modes.index(self.mode) + 1) % len(self.modes)]
-        else:
-            self.mode = mode or 'float'
-
-        layout_map = {
-            'float': None,
-            'vstack': VerticalStackLayout(),
-            'hstack': HorizontalStackLayout(),
-            'bsp': BSPLayout(),
-            'bsp_alt': BSPAltLayout(),
-            'ultra_wide': UltrawideLayout(),
-            'ultra_tall': UltratallLayout(),
-        }
-
-        self.window_container.styles.layout = layout_map.get(self.mode)
-
-        # Apply classes for styling
-        self.window_container.remove_class(*self.modes)
-        self.window_container.add_class(self.mode)
-
-        # Update styles for all existing windows
-        for win in self.windows:
-            self._apply_styles_for_window(win)
-
-        # Integration for taskbar widget
-        try:
-            wmlayout_widget = self.window_container.app.screen.query_one(WMLayout)
-            wmlayout_widget.update_mode(self.mode)
-        except Exception:
-            log.warning("WMLayout widget not found, can't update display.")
 
     def handle_window_minimized(self, window: Window) -> None:
         window.add_class("minimized")
@@ -261,23 +159,6 @@ class WindowManager:
         else:
             win.styles.offset = None
 
-    async def spawn_window(self, executable: Executable) -> None:
-        """Creates a new window and adds it to the container."""
-        def _center_window(window):
-            parent_size = self.window_container.size
-            window_size = (window.init_width, window.init_height)
-            offset_x = (parent_size.width - window_size[0]) // 2
-            offset_y = (parent_size.height - window_size[1]) // 2
-            window.styles.offset = (offset_x, offset_y)
-            window.user_offset = (offset_x, offset_y)
-
-        win = Window(executable)
-        self._apply_styles_for_window(win)
-        _center_window(win)
-        await self.window_container.mount(win)
-        self.set_active_window(win)
-        self._post_active_windows_update()
-
     def cycle_focus_element(self, direction: int = 1) -> None:
         """Cycles focus between focusable ELEMENTS within the active window"""
         if not self.active_window:
@@ -296,7 +177,7 @@ class WindowManager:
     def focus_cycle(self, direction: int = 1) -> None:
         """Cycles the active window and focuses its content."""
         all_windows = self.windows
-        if not all_windows:
+        if not all_windows or not self.active_window:
             return
 
         try:
@@ -307,23 +188,49 @@ class WindowManager:
         next_index = (current_index + direction) % len(all_windows)
         self.set_active_window(all_windows[next_index])
 
+    def _get_visual_neighbor(self, direction: str) -> Window | None:
+        """
+        Ask the current layout for the visual neighbor of the active window.
+        Returns None if no neighbor exists or layout doesn't support directional navigation.
+        """
+        if not self.active_window:
+            return None
+
+        layout = self.window_container.styles.layout
+        if layout and hasattr(layout, "get_neighbor"):
+            return layout.get_neighbor(self.active_window, direction)
+        return None
+
     def focus_direction(self, direction: str) -> None:
         """
-        Moves focus directionally. Only works in tiling layouts.
+        Move focus in a given direction using layout-aware neighbors.
         """
-        if self.mode == 'float':
+        if not self.active_window or self.mode == 'float':
             return
 
-        direction_map = {
-            'vstack': {'up': -1, 'down': 1},
-            'hstack': {'left': -1, 'right': 1},
-        }
+        neighbor = self._get_visual_neighbor(direction)
+        if neighbor:
+            self.set_active_window(neighbor)
+            return
 
-        if self.mode not in direction_map or direction not in direction_map[self.mode]:
-            return  # trying to move 'left' in 'vstack'
+        print("No neighbor found")
 
-        cycle_dir = direction_map[self.mode][direction]
-        self.focus_cycle(cycle_dir)
+    def move_window_direction(self, direction: str) -> None:
+        """
+        Move the active window in a given direction.
+        """
+        if not self.active_window or self.mode == 'float':
+            return
+
+        neighbor = self._get_visual_neighbor(direction)
+        if neighbor:
+            if direction in ["up", "left"]:
+                self.window_container.move_child(self.active_window, before=neighbor)
+            elif direction in ["down", "right"]:
+                self.window_container.move_child(self.active_window, after=neighbor)
+            return
+
+        print("No neighbor found")
 
     def _post_active_windows_update(self) -> None:
         """Helper method to calculate and post the window state."""
@@ -335,3 +242,69 @@ class WindowManager:
             new_active_windows[app_id].append(window)
 
         self.window_container.post_message(ActiveWindowsChanged(new_active_windows))
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Flyout Management
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def request_flyout(self, new_flyout: Flyout) -> None:
+        """
+        Handles a request to show a flyout, ensures only one is active at a time.
+        """
+        if self.active_flyout is not None:
+            is_toggling_same_flyout = (self.active_flyout.id == new_flyout.id)
+            await self.close_active_flyout()
+
+            if is_toggling_same_flyout:
+                return
+
+        self.active_flyout = new_flyout
+        await self._desktop_layer.mount(self.active_flyout)
+        self.active_flyout.focus()
+
+    async def close_active_flyout(self):
+        flyouts = self._desktop_layer.app.query(Flyout)
+        if not flyouts:
+            return
+        self.window_container.screen.set_focus(None)
+        await flyouts.remove()
+        self.active_flyout = None
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Layout Management
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def change_mode(self, mode: str | None = None, initial: bool = False) -> None:
+        """Changes the layout mode by setting the style on window container."""
+        # default
+        if not initial:
+            self.mode = self.modes[(self.modes.index(self.mode) + 1) % len(self.modes)]
+        else:
+            self.mode = mode or 'float'
+
+        layout_map = {
+            'float': None,
+            'vstack': VerticalStackLayout(),
+            'hstack': HorizontalStackLayout(),
+            'bsp': BSPLayout(),
+            'bsp_alt': BSPAltLayout(),
+            'ultra_wide': UltrawideLayout(),
+            'ultra_tall': UltratallLayout(),
+        }
+
+        self.window_container.styles.layout = layout_map.get(self.mode)
+
+        # Apply classes for styling
+        self.window_container.remove_class(*self.modes)
+        self.window_container.add_class(self.mode)
+
+        # Update styles for all existing windows
+        for win in self.windows:
+            self._apply_styles_for_window(win)
+
+        # Integration for taskbar widget
+        try:
+            wmlayout_widget = self.window_container.app.screen.query_one(WMLayout)
+            wmlayout_widget.update_mode(self.mode)
+        except Exception:
+            log.warning("WMLayout widget not found, can't update display.")
