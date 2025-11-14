@@ -1,0 +1,29 @@
+Terminals vary in:
+how they encode Alt/meta
+ESC timeout behavior
+how they report Ctrl+<something>
+support for Ctrl+Shift
+support for Ctrl+Arrow, Shift+Arrow
+Unicode input
+locale
+OS keyboard layouts
+terminal emulator quirks (VTE, Konsole, xterm, Kitty, Alacritty, etc.)
+
+You cannot rely universally on:
+Alt+anything
+Shift as a standalone modifier
+Shift combined with arrow keys
+Ctrl combined with non-ASCII
+Multi-modifier combos (Ctrl+Alt+Shift)
+Function keys beyond F12 working consistently
+
+The ONLY safe, guaranteed combos are:
+Guaranteed (universally reliable):
+Ctrl+A → Ctrl+Z
+Ctrl+@ → some Ctrl+_] depending on layout
+Enter, Esc, Tab, Backspace
+Arrow keys
+Function keys (F1–F12 mostly safe, but not beyond)
+Printable ASCII characters
+UTF-8 text input (except ctrl-modified)
+Everything else is terminal-dependent, sometimes even OS-dependent.

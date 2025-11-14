@@ -32,6 +32,7 @@ Desktop:
   - [ ] State persistence (snapshots)
   - [ ] User system (login/logout/switch/create/delete)
   - [ ] Security (privileges, passwords, encrypt, decrypt system, hide/show)
+  - [ ] Global 'cursor', kb/mouse controlled
 
 Status Bar:
   - [x] Launchers (terminal, notepad, debug)
@@ -43,7 +44,7 @@ Status Bar:
   - [ ] Search functionality
 
 Apps:
-  - [x] notepad, terminal, snake game
+  - [x] notepad, terminal/s, snake game
   - [ ] calculator, browser, media viewer/player, file manager, settings
 
 QOL:
@@ -51,6 +52,9 @@ QOL:
   - [ ] Module-specific configs (taskbar, windows, wm)
   - [ ] CSS override configs (taskbar, windows, wm, desktop)
 
+Compatibility:
+  - [ ] Command Pallette (in place of hotkeys)
+  - [ ] Use Ctrl+[A-Z, @], Enter, Esc, Tab, Backspace, Arrow keys, Function keys,Printable ASCII characters, UTF-8 text input only
 
 MISC DONE:
 - better layout swiching performance (only css now)
@@ -75,6 +79,10 @@ MISC DONE:
 - feat: wm: tiling swap windows, focus windows upgrade, code cleanup
 - change: log to lib/display/console.py instead of textual console
 - change: custom layouts & their children are now neighbor-aware
+- add: new alternative ~full-featured~ xterminal
+- add: initial readme
+- change: executable smart focus tries to focus widget container first
+- change: terminal.py to dustty.py
 
 CONTINUE:
 taskbar
@@ -87,12 +95,13 @@ TODO PRIORITY
 - user system
 - context menu
 - settings
-- readme
+- trick alt terminal to use the vfs
 
 TOFIX
-terminal markdown
+dustty markdown
 might refactor wm to use move_child as well for z-axis ordering
 
+TODO UI
 |--------------------|
 | Settings      - + x|
 |--------------------|
@@ -105,6 +114,8 @@ might refactor wm to use move_child as well for z-axis ordering
 | F |                |
 |--------------------|
 
+Polish:
+tiled compact mode - no borders for windows; executables fill the windows; add separators (one line tall/wide) for neighboring windows
 """
 from __future__ import annotations
 
@@ -112,8 +123,8 @@ from typing import Dict, Set, Tuple, cast
 
 import lib.display.glyphs as glyphs
 from bin.debug import Debug, DebugContent
+from bin.dustty import Dustty
 from bin.notepad import Notepad
-from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
 from lib.core.widgets import UIToast
 from lib.debug2 import DomInfoOverlay
@@ -123,7 +134,7 @@ from lib.display.flyout import Flyout
 from lib.display.window import Window
 from lib.display.wm import Desktop
 from lib.vfs import VFS, AppInfo
-from textual import log, on, timer
+from textual import log, on, pilot, timer
 from textual._border import BORDER_CHARS, BORDER_LOCATIONS
 from textual.app import App, ComposeResult, Timer
 from textual.containers import Container

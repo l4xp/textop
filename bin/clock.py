@@ -21,7 +21,7 @@ class ClockApp(Widget):
 
 
 class Clock(Executable):
-    """A simple text editor application."""
+    """A simple clock display."""
     APP_NAME = "Clock"
     APP_ID = "clock"
     APP_ICON_NAME = "clock"

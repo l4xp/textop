@@ -105,17 +105,22 @@ class Executable(Container):
             ]
             if focusable_descendants:
                 target_to_focus = focusable_descendants[-1]
-                log(f"Smart focus found target: {target_to_focus}")
+                print(f"Smart focus found target: {target_to_focus}")
                 target_to_focus.focus()
                 return True
             else:
-                log(f"Smart focus found no descendants in {content_container}")
-                self._window.focus()
+                print(f"Smart focus found no descendants in {content_container}")
+                try:
+                    print(f"Focused the {content_container}")
+                    content_container.focus()
+                except Exception:
+                    print(f"Focused the {self._window}")
+                    self._window.focus()
                 return False
 
         except Exception as e:
             # if #app-content doesn't exist or no focus target can be found
-            log(f"Error during smart focus: {e}")
+            print(f"Error during smart focus: {e}")
             return False
 
     def compose(self) -> ComposeResult:

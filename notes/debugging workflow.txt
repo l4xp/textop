@@ -1,0 +1,3 @@
+- run lib.display.debug2 in one terminal
+- add print statements to log information
+- run boot.py in a separate terminal

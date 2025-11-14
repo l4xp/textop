@@ -2,9 +2,9 @@ from datetime import datetime
 
 import lib.display.glyphs as glyphs
 from bin.debug import Debug
+from bin.dustty import Dustty
 # Import your app executables
 from bin.notepad import Notepad
-from bin.terminal import Dustty
 from lib.core.events import ActiveWindowsChanged, Run
 from lib.core.widgets import UIButton
 from lib.display.flyout import Flyout
