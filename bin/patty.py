@@ -5,6 +5,7 @@
 import fcntl
 import os
 import pty
+import re
 import struct
 import termios
 import threading
@@ -87,7 +88,13 @@ KEY_TRANSLATIONS = {
     "ctrl+backspace": b"\x08",
     "ctrl+\\": b"\x1c", "ctrl+]": b"\x1d", "ctrl+^": b"\x1e",
 }
-
+# --- Regex to sanitize private SGR sequences that pyte misinterprets for some reason?---
+PRV_SGR_RE = re.compile(r'\x1b\[[>?][0-9;]*m')
+# Regex for DCS (Device Control String) sequences ---
+DCS_RE = re.compile(r'\x1bP.*?\x1b\\', re.DOTALL)
+OSC_RE = re.compile(r'\x1b\][^\x07\x1b]*?(?:\x07|\x1b\\)')
+APC_RE = re.compile(r'\x1b_.*?\x1b\\', re.DOTALL)
+PM_RE = re.compile(r'\x1b\^.*?\x1b\\', re.DOTALL)
 
 _HEX_CHARS = "0123456789abcdefABCDEF"
 
@@ -100,29 +107,56 @@ GUI_KEY_BINDINGS = {
 
 
 class CustomHistoryScreen(Screen):
-    # ... (implementation is correct and unchanged) ...
     def __init__(self, columns, lines, history: deque, terminal_widget: "Terminal"):
         self.history = history
         self.terminal_widget = terminal_widget
         super().__init__(columns, lines)
+
     def index(self):
         if not self.terminal_widget.in_alternate_screen and self.cursor.y == self.lines - 1:
             self.history.append(self.buffer[0].copy())
         super().index()
 
+    def report_device_attributes(self, *args, **kwargs):
+        """
+        Called by pyte when the underlying app sends a DA request.
+        We respond by telling the app we are a VT102 terminal.
+        """
+        print("[CustomHistoryScreen.report_device_attributes] Received DA request.")
+        # VT102 response: `ESC [ ? 6 c`
+        response = b"\x1b[?6c"
+        self.terminal_widget.write_to_pty(response)
+        # Call the original method (which is a no-op but good practice)
+        super().report_device_attributes(*args, **kwargs)
+
 
 def _pyte_to_rich_style(char: Char) -> Style:
+    """A safer version of the style converter with a BCE workaround."""
     try:
         fg_is_hex = len(char.fg) == 6 and all(c in _HEX_CHARS for c in char.fg)
         bg_is_hex = len(char.bg) == 6 and all(c in _HEX_CHARS for c in char.bg)
         color = f"#{char.fg}" if fg_is_hex else char.fg
         bgcolor = f"#{char.bg}" if bg_is_hex else char.bg
-        return Style(
-            color=color if color != "default" else None, bgcolor=bgcolor if bgcolor != "default" else None,
-            bold=char.bold, italic=char.italics, underline=char.underscore,
-            strike=char.strikethrough, reverse=char.reverse,
-        )
-    except ColorParseError: return Style.null()
+
+        # Detects an erased "blank" cell and avoids applying text attributes to it.
+        is_blank_space = char.data == ' '
+        # Check against None as well, as pyte might use it.
+        is_default_colors = char.fg in ("default", None) and char.bg in ("default", None)
+
+        if is_blank_space and is_default_colors:
+            return Style(
+                color=None if color == "default" else color,
+                bgcolor=None if bgcolor == "default" else bgcolor
+            )
+        else:
+            return Style(
+                color=color if color != "default" else None,
+                bgcolor=bgcolor if bgcolor != "default" else None,
+                bold=char.bold, italic=char.italics, underline=char.underscore,
+                strike=char.strikethrough, reverse=char.reverse,
+            )
+    except ColorParseError:
+        return Style.null()
 
 
 def normalize_event_key(event: events.Key) -> Tuple[str, bool, bool, bool, Optional[str], bool]:
@@ -181,7 +215,7 @@ class Terminal(Widget, can_focus=True):
     scroll_offset = reactive(0, layout=True)
 
     def __init__(self, scrollback: int = 10000, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(markup=False, **kwargs)
         self._term_width = 80; self._term_height = 24
         self.history = deque(maxlen=scrollback)
         self.in_alternate_screen = False
@@ -229,8 +263,8 @@ class Terminal(Widget, can_focus=True):
         if pid == 0:
             env = os.environ.copy()
             env["TERM"] = "xterm-256color"
-            shell = "/bin/bash"
-            # shell = os.environ.get("SHELL", "/bin/bash")
+            # shell = "/bin/bash"
+            shell = os.environ.get("SHELL", "/bin/bash")
             os.execvpe(shell, [shell], env)
         else:
             self.child_pid, self.master_fd = pid, master_fd
@@ -243,13 +277,22 @@ class Terminal(Widget, can_focus=True):
                 self.app.call_from_thread(self._process_pty_data, data)
             except (OSError, BlockingIOError): break
 
-    def _process_pty_data(self, data: bytes):
-        # --- NEW: Intercept mouse and screen mode sequences BEFORE pyte ---
-        for sequence, (mode_name, enabled) in MOUSE_PROTOCOLS.items():
-            if sequence in data:
-                print(f"Intercepted mouse mode sequence. {mode_name} -> {enabled}")
-                setattr(self, f"{mode_name}_enabled", enabled)
+    def write_to_pty(self, data: bytes) -> None:
+        """Safely write data directly to the PTY from the terminal widget."""
+        print(f"[Terminal.write_to_pty] Writing response to PTY: {data!r}")
+        if self.master_fd is not None:
+            os.write(self.master_fd, data)
 
+    def _process_pty_data(self, data: bytes):
+        def _remove_control_strings(s: str) -> str:
+            s = OSC_RE.sub('', s)
+            s = DCS_RE.sub('', s)
+            s = PM_RE.sub('', s)
+            s = APC_RE.sub('', s)
+            s = PRV_SGR_RE.sub('', s)
+            return s
+        for sequence, (mode_name, enabled) in MOUSE_PROTOCOLS.items():
+            if sequence in data: setattr(self, f"{mode_name}_enabled", enabled)
         if ENTER_ALT_SCREEN in data and not self.in_alternate_screen:
             self.in_alternate_screen = True; self._screen = self._alt_screen; self.stream = self._alt_stream
             self._screen.reset(); self._line_cache.clear(); self.scroll_offset = 0
@@ -257,15 +300,29 @@ class Terminal(Widget, can_focus=True):
             self.in_alternate_screen = False; self._screen = self._main_screen; self.stream = self._main_stream
             self._line_cache.clear(); self.scroll_offset = 0
 
-        # Continue with normal processing...
         data = self.decode_buffer + data
-        try: text = data.decode("utf-8"); self.decode_buffer = b""
-        except UnicodeDecodeError as e: text = data[:e.start].decode("utf-8"); self.decode_buffer = data[e.start:]
+        print(data)
+        try:
+            text = data.decode("utf-8")
+            self.decode_buffer = b""
+        except UnicodeDecodeError as e:
+            text = data[:e.start].decode("utf-8")
+            self.decode_buffer = data[e.start:]
+
         if text:
-            self.stream.feed(text)
+            # --- Sanitize the text stream before feeding it to pyte ---
+            original_len = len(text)
+            sanitized_text = _remove_control_strings(text)
+
+            if len(sanitized_text) != original_len:
+                print(f"Sanitized unsupported escape sequences. Removed {original_len - len(sanitized_text)} chars.")
+
+            self.stream.feed(sanitized_text)
+
             dirty_lines = self._screen.dirty
             for y in dirty_lines:
-                if y in self._screen.buffer: self._line_cache[y] = self._render_pyte_line(self._screen.buffer[y])
+                if y in self._screen.buffer:
+                    self._line_cache[y] = self._render_pyte_line(self._screen.buffer[y])
             self._screen.dirty.clear()
             if self.scroll_offset == 0: self.refresh()
             else: self.dirty = True
@@ -340,12 +397,12 @@ class Terminal(Widget, can_focus=True):
         key_bytes = get_key_bytes(event)
 
         if key_bytes:
-            print(f"[on_key] Writing sequence: {key_bytes!r}")
+            # print(f"[on_key] Writing sequence: {key_bytes!r}")
             os.write(self.master_fd, key_bytes)
             event.stop()
         else:
             print(f"[on_key] No byte sequence determined for this key event.")
-        print("[on_key] exit")
+        # print("[on_key] exit")
         self.cursor_visible = True
         self._cursor_timer.reset()
 
@@ -374,12 +431,12 @@ class Terminal(Widget, can_focus=True):
         print(f"[on_mouse_down] entry. button={event.button}")
         if self._cursor_timer: self.cursor_visible = True; self._cursor_timer.reset()
         if not self._send_mouse_event(event, event.button - 1, "M"): self.focus()
-        print("[on_mouse_down] exit")
+        # print("[on_mouse_down] exit")
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
         print(f"[on_mouse_up] entry. button={event.button}")
         self._send_mouse_event(event, event.button - 1, "m")
-        print("[on_mouse_up] exit")
+        # print("[on_mouse_up] exit")
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
         is_drag = event.button != 0
@@ -390,14 +447,14 @@ class Terminal(Widget, can_focus=True):
     def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
         print("[on_mouse_scroll_up] entry")
         if not self._send_mouse_event(event, 64, "M"):
-            if not self.in_alternate_screen: self.scroll_offset = min(len(self.history), self.scroll_offset + 3); self.refresh()
-        print("[on_mouse_scroll_up] exit")
+            if not self.in_alternate_screen: self.scroll_offset = min(len(self.history), self.scroll_offset + 1); self.refresh()
+        # print("[on_mouse_scroll_up] exit")
 
     def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
         print("[on_mouse_scroll_down] entry")
         if not self._send_mouse_event(event, 65, "M"):
-            if not self.in_alternate_screen: self.scroll_offset = max(0, self.scroll_offset - 3); self.refresh()
-        print("[on_mouse_scroll_down] exit")
+            if not self.in_alternate_screen: self.scroll_offset = max(0, self.scroll_offset - 1); self.refresh()
+        # print("[on_mouse_scroll_down] exit")
 
 
 class Patty(Executable):
