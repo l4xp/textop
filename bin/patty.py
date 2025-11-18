@@ -2,6 +2,12 @@
 # supports:
 
 # training data(?): pyte api reference, mitosch textual-terminal, pyte terminal example, gate one terminal documentation
+# todo:
+# fix prompt freezing between inputs/processing (show no prompt instead);
+# fix clear command not clearing local history;
+# fix cursor off-position (something about fish/foot);
+#  [[🧱]|[]] =>   ╰─λ ssd
+# fix nano background contiguity? (something about reset)
 import fcntl
 import os
 import pty
